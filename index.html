@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mis suscripciones</title>
+<style>
+:root{--bg:#0e1015;--panel:#171a22;--line:#292e3a;--text:#f4f5f7;--muted:#969eae;--accent:#9cf2c0;--accent2:#78a7ff;--danger:#ff8e9d}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#26354b 0,transparent 36%),var(--bg);color:var(--text);font:15px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}.wrap{max-width:1050px;margin:auto;padding:48px 22px}.eyebrow{color:var(--accent);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px}h1{font-size:clamp(32px,6vw,62px);line-height:1;margin:12px 0 10px;letter-spacing:-.05em}p{color:var(--muted);margin:0}.top{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:34px}.total{background:var(--accent);color:#102018;padding:18px 22px;border-radius:18px;min-width:185px}.total small{display:block;font-weight:700;opacity:.7}.total strong{font-size:30px;display:block;margin-top:2px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px}.card{background:rgba(23,26,34,.9);border:1px solid var(--line);border-radius:20px;padding:22px;position:relative;transition:.2s}.card:hover{transform:translateY(-3px);border-color:#536074}.icon{width:43px;height:43px;border-radius:13px;background:linear-gradient(135deg,var(--accent2),#c89cff);display:grid;place-items:center;font-size:21px;font-weight:800;color:#10131c;margin-bottom:20px}.card h2{font-size:20px;margin:0 0 4px}.price{font-size:27px;font-weight:750;margin:12px 0}.price span{font-size:13px;color:var(--muted);font-weight:500}.date{border-top:1px solid var(--line);padding-top:13px;color:var(--muted)}.date b{color:var(--text)}button{border:0;border-radius:11px;padding:11px 15px;background:var(--accent);color:#122018;font-weight:750;cursor:pointer}button:hover{filter:brightness(1.08)}.remove{position:absolute;right:17px;top:17px;background:transparent;color:var(--muted);padding:5px;font-size:18px}.remove:hover{color:var(--danger)}.add{margin:28px 0 0;background:transparent;border:1px dashed #596274;color:var(--text);width:100%;padding:17px}.add:hover{border-color:var(--accent);color:var(--accent)}.modal{display:none;position:fixed;inset:0;background:#05060a99;place-items:center;padding:20px}.modal.open{display:grid}.box{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:25px;width:min(430px,100%)}.box h2{margin-top:0}.box label{display:block;color:var(--muted);font-size:13px;margin:14px 0 6px}.box input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0d0f14;color:var(--text);font:inherit}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.cancel{background:#282d39;color:var(--text)}@media(max-width:600px){.top{display:block}.total{margin-top:24px}.wrap{padding-top:30px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+ <div class="top"><div><div class="eyebrow">Control personal</div><h1>Mis suscripciones</h1><p>Todo lo que pagas, en un solo lugar.</p></div><div class="total"><small>TOTAL MENSUAL</small><strong id="total">$0</strong></div></div>
+ <section id="cards" class="grid"></section>
+ <button class="add" id="open">＋ Agregar suscripción</button>
+</main>
+<div class="modal" id="modal"><form class="box" id="form"><h2>Nueva suscripción</h2><label>Nombre</label><input id="name" required placeholder="Ej. Netflix"><label>Precio mensual ($)</label><input id="price" type="number" min="0" step="0.01" required placeholder="10"><label>Día de pago (1-31)</label><input id="day" type="number" min="1" max="31" required placeholder="15"><div class="actions"><button type="button" class="cancel" id="close">Cancelar</button><button>Agregar</button></div></form></div>
+<script>
+const seed=[{name:'OpenCode Go',price:10,day:17,icon:'⌘'},{name:'Gimnasio',price:20,day:29,icon:'✦'},{name:'iCloud',price:3,day:16,icon:'I'},{name:'Gmail',price:1,day:2,icon:'G'},{name:'ABACUS IA',price:20,day:4,icon:'A'},{name:'ChatGPT Plus',price:20,day:1,icon:'C'}];
+let items=JSON.parse(localStorage.getItem('subscriptions')||'null')||seed;
+const $=s=>document.querySelector(s); const money=n=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'USD'}).format(n);
+function render(){ $('#cards').innerHTML=items.map((x,i)=>`<article class="card"><button class="remove" title="Eliminar" onclick="removeItem(${i})">×</button><div class="icon">${x.icon||x.name[0].toUpperCase()}</div><h2>${escapeHtml(x.name)}</h2><div class="price">${money(Number(x.price))} <span>/ mes</span></div><div class="date">Próximo pago: <b>día ${x.day}</b> de cada mes</div></article>`).join('');$('#total').textContent=money(items.reduce((a,x)=>a+Number(x.price),0));localStorage.setItem('subscriptions',JSON.stringify(items))}
+function escapeHtml(s){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function removeItem(i){if(confirm(`¿Eliminar ${items[i].name}?`)){items.splice(i,1);render()}}
+$('#open').onclick=()=>$('#modal').classList.add('open');$('#close').onclick=()=>$('#modal').classList.remove('open');$('#form').onsubmit=e=>{e.preventDefault();items.push({name:$('#name').value,price:$('#price').value,day:$('#day').value,icon:$('#name').value[0].toUpperCase()});render();e.target.reset();$('#modal').classList.remove('open')};render();
+</script>
+</body></html>
