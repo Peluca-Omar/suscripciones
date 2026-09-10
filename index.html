@@ -1,37 +1,921 @@
 <!doctype html>
 <html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mis suscripciones</title>
-<style>
-:root{--bg:#0e1015;--panel:#171a22;--line:#292e3a;--text:#f4f5f7;--muted:#969eae;--accent:#9cf2c0;--accent2:#78a7ff;--danger:#ff8e9d}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#26354b 0,transparent 36%),var(--bg);color:var(--text);font:15px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}.wrap{max-width:1050px;margin:auto;padding:48px 22px}.eyebrow{color:var(--accent);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px}h1{font-size:clamp(32px,6vw,62px);line-height:1;margin:12px 0 10px;letter-spacing:-.05em}p{color:var(--muted);margin:0}.top{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:34px}.total{background:var(--accent);color:#102018;padding:18px 22px;border-radius:18px;min-width:185px}.total small{display:block;font-weight:700;opacity:.7}.total strong{font-size:30px;display:block;margin-top:2px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px}.card{background:rgba(23,26,34,.9);border:1px solid var(--line);border-radius:20px;padding:22px;position:relative;transition:.2s}.card:hover{transform:translateY(-3px);border-color:#536074}.icon{width:43px;height:43px;border-radius:13px;background:linear-gradient(135deg,var(--accent2),#c89cff);display:grid;place-items:center;font-size:21px;font-weight:800;color:#10131c;margin-bottom:20px}.card h2{font-size:20px;margin:0 0 4px}.price{font-size:27px;font-weight:750;margin:12px 0}.price span{font-size:13px;color:var(--muted);font-weight:500}.date{border-top:1px solid var(--line);padding-top:13px;color:var(--muted)}.date b{color:var(--text)}button{border:0;border-radius:11px;padding:11px 15px;background:var(--accent);color:#122018;font-weight:750;cursor:pointer}button:hover{filter:brightness(1.08)}.remove{position:absolute;right:17px;top:17px;background:transparent;color:var(--muted);padding:5px;font-size:18px}.remove:hover{color:var(--danger)}.add{margin:28px 0 0;background:transparent;border:1px dashed #596274;color:var(--text);width:100%;padding:17px}.add:hover{border-color:var(--accent);color:var(--accent)}.modal{display:none;position:fixed;inset:0;background:#05060a99;place-items:center;padding:20px}.modal.open{display:grid}.box{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:25px;width:min(430px,100%)}.box h2{margin-top:0}.box label{display:block;color:var(--muted);font-size:13px;margin:14px 0 6px}.box input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0d0f14;color:var(--text);font:inherit}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.cancel{background:#282d39;color:var(--text)}@media(max-width:600px){.top{display:block}.total{margin-top:24px}.wrap{padding-top:30px}}
-</style>
-</head>
-<body>
-<main class="wrap">
- <div class="top"><div><div class="eyebrow">Control personal</div><h1>Mis suscripciones</h1><p>Todo lo que pagas, en un solo lugar.</p></div><div class="total"><small>TOTAL MENSUAL</small><strong id="total">$0</strong></div></div>
- <section id="cards" class="grid"></section>
- <button class="add" id="open">＋ Agregar suscripción</button>
-</main>
-<div class="modal" id="modal"><form class="box" id="form"><h2>Nueva suscripción</h2><label>Nombre</label><input id="name" required placeholder="Ej. Netflix"><label>Precio mensual ($)</label><input id="price" type="number" min="0" step="0.01" required placeholder="10"><label>Día de pago (1-31)</label><input id="day" type="number" min="1" max="31" required placeholder="15"><div class="actions"><button type="button" class="cancel" id="close">Cancelar</button><button>Agregar</button></div></form></div>
- <script type="module">
- import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
- import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
- import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GASTOS MENSUALES</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #151c31;
+        --panel-2: #1c2540;
+        --line: #2b385c;
+        --text: #f7f8fc;
+        --muted: #9ca9c6;
+        --accent: #9df3bf;
+        --blue: #8bb8ff;
+        --danger: #ff94a4;
+        --warning: #ffcf70;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 85% -10%, #294568 0, transparent 34%),
+          var(--bg);
+        color: var(--text);
+        font:
+          15px system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        min-height: 100vh;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        border: 0;
+        border-radius: 11px;
+        padding: 11px 15px;
+        background: var(--accent);
+        color: #102018;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.08);
+      }
+      button.secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      button.danger {
+        background: transparent;
+        color: var(--danger);
+        border: 1px solid #71414c;
+      }
+      .hidden {
+        display: none !important;
+      }
+      .login {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .login-card {
+        width: min(460px, 100%);
+        padding: 38px;
+        border: 1px solid var(--line);
+        background: rgba(21, 28, 49, 0.92);
+        border-radius: 28px;
+        box-shadow: 0 24px 70px #030611;
+      }
+      .mark {
+        color: var(--accent);
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        font-size: 12px;
+      }
+      .login h1 {
+        font-size: clamp(34px, 8vw, 58px);
+        letter-spacing: -0.06em;
+        line-height: 0.95;
+        margin: 14px 0;
+      }
+      .muted {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+      .google {
+        width: 100%;
+        margin-top: 25px;
+        background: #fff;
+        color: #17213a;
+      }
+      .wrap {
+        max-width: 1220px;
+        margin: auto;
+        padding: 30px 22px 60px;
+      }
+      .top {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: flex-start;
+        margin-bottom: 28px;
+      }
+      .eyebrow {
+        color: var(--accent);
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        font-size: 12px;
+      }
+      .top h1 {
+        font-size: clamp(34px, 7vw, 68px);
+        line-height: 0.9;
+        letter-spacing: -0.065em;
+        margin: 11px 0;
+      }
+      .account {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        object-fit: cover;
+        background: var(--panel-2);
+      }
+      .account-info {
+        text-align: right;
+        max-width: 180px;
+      }
+      .account-info b,
+      .account-info span {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .account-info span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 13px;
+        margin-bottom: 24px;
+      }
+      .stat {
+        padding: 18px;
+        border: 1px solid var(--line);
+        background: rgba(21, 28, 49, 0.86);
+        border-radius: 18px;
+      }
+      .stat small {
+        color: var(--muted);
+        font-weight: 750;
+        letter-spacing: 0.04em;
+      }
+      .stat strong {
+        display: block;
+        font-size: clamp(23px, 3vw, 34px);
+        margin-top: 8px;
+        letter-spacing: -0.045em;
+      }
+      .stat.paid {
+        border-color: #3c7652;
+      }
+      .stat.pending {
+        border-color: #715a35;
+      }
+      .progress {
+        height: 8px;
+        background: #0b1020;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-top: 13px;
+      }
+      .progress i {
+        height: 100%;
+        display: block;
+        background: var(--accent);
+        border-radius: 8px;
+      }
+      .alerts {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 0 0 20px;
+      }
+      .alert {
+        background: #242c45;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 11px;
+        color: #d8e2ff;
+        font-size: 13px;
+      }
+      .controls {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) 160px 160px auto;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .controls input,
+      .controls select,
+      input,
+      select {
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: var(--panel);
+        color: var(--text);
+        padding: 11px 12px;
+        min-width: 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+        gap: 14px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: rgba(21, 28, 49, 0.9);
+        border-radius: 20px;
+        padding: 19px;
+        position: relative;
+      }
+      .card.paid-card {
+        border-color: #3d7654;
+      }
+      .card-head {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding-right: 54px;
+      }
+      .icon {
+        width: 45px;
+        height: 45px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        color: #101522;
+        font-weight: 900;
+        flex: none;
+      }
+      .card h2 {
+        font-size: 20px;
+        margin: 0;
+        line-height: 1.1;
+      }
+      .category {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+      }
+      .price {
+        font-size: 28px;
+        font-weight: 850;
+        letter-spacing: -0.045em;
+        margin: 19px 0 12px;
+      }
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .badge {
+        font-weight: 800;
+        border-radius: 99px;
+        padding: 5px 8px;
+        font-size: 12px;
+      }
+      .due-today {
+        color: #241b04;
+        background: var(--warning);
+      }
+      .due-week {
+        color: #11233d;
+        background: var(--blue);
+      }
+      .paid-badge {
+        color: #102018;
+        background: var(--accent);
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 15px;
+      }
+      .actions button {
+        flex: 1;
+        padding: 9px;
+      }
+      .icon-btn {
+        position: absolute;
+        right: 13px;
+        top: 13px;
+        padding: 6px 8px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .empty {
+        grid-column: 1/-1;
+        padding: 52px 22px;
+        text-align: center;
+        background: rgba(21, 28, 49, 0.7);
+        border: 1px dashed var(--line);
+        border-radius: 20px;
+        color: var(--muted);
+      }
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: #050814b8;
+        display: none;
+        place-items: center;
+        padding: 20px;
+        z-index: 10;
+      }
+      .modal.open {
+        display: grid;
+      }
+      .box {
+        width: min(540px, 100%);
+        max-height: 90vh;
+        overflow: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 24px;
+      }
+      .box h2 {
+        margin: 0 0 20px;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 13px;
+      }
+      .field {
+        display: grid;
+        gap: 7px;
+      }
+      .field.wide {
+        grid-column: 1/-1;
+      }
+      .field label {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 22px;
+      }
+      .history-row {
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .history-row:last-child {
+        border: 0;
+      }
+      .toast {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        background: #eafdf0;
+        color: #102018;
+        padding: 13px 16px;
+        border-radius: 12px;
+        font-weight: 750;
+        box-shadow: 0 10px 32px #0007;
+        z-index: 20;
+      }
+      @media (max-width: 760px) {
+        .wrap {
+          padding: 22px 15px 45px;
+        }
+        .top {
+          display: block;
+        }
+        .account {
+          margin-top: 22px;
+        }
+        .account-info {
+          text-align: left;
+        }
+        .summary {
+          grid-template-columns: 1fr 1fr;
+        }
+        .controls {
+          grid-template-columns: 1fr 1fr;
+        }
+        .controls input {
+          grid-column: 1/-1;
+        }
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+        .field.wide {
+          grid-column: auto;
+        }
+      }
+      @media (max-width: 420px) {
+        .summary {
+          grid-template-columns: 1fr;
+        }
+        .controls {
+          grid-template-columns: 1fr;
+        }
+        .top h1 {
+          font-size: 43px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section id="login" class="login">
+      <div class="login-card">
+        <div class="mark">CONTROL PERSONAL</div>
+        <h1>GASTOS<br />MENSUALES</h1>
+        <p class="muted">
+          Organiza lo que pagas, marca cada cobro cuando lo completes y revisa
+          tu avance del mes.
+        </p>
+        <button id="sign-in" class="google">Continuar con Google</button>
+      </div>
+    </section>
+    <main id="app" class="wrap hidden">
+      <header class="top">
+        <div>
+          <div class="eyebrow">CONTROL PERSONAL</div>
+          <h1>GASTOS MENSUALES</h1>
+          <p class="muted">Tu progreso de pago, actualizado en tiempo real.</p>
+        </div>
+        <div class="account">
+          <img id="avatar" class="avatar" alt="" />
+          <div class="account-info">
+            <b id="user-name"></b><span id="user-email"></span>
+          </div>
+          <button id="sign-out" class="secondary">Salir</button>
+        </div>
+      </header>
+      <section class="summary">
+        <article class="stat">
+          <small>TOTAL MENSUAL</small><strong id="monthly-total">$0.00</strong>
+        </article>
+        <article class="stat">
+          <small>TOTAL ANUAL</small><strong id="yearly-total">$0.00</strong>
+        </article>
+        <article class="stat paid">
+          <small>PAGADO ESTE MES</small><strong id="paid-total">$0.00</strong>
+        </article>
+        <article class="stat pending">
+          <small>PENDIENTE</small><strong id="pending-total">$0.00</strong>
+          <div class="progress"><i id="payment-progress"></i></div>
+        </article>
+      </section>
+      <section id="alerts" class="alerts"></section>
+      <section class="controls">
+        <input id="search" type="search" placeholder="Buscar gasto..." />
+        <select id="category-filter">
+          <option value="all">Todas las categorias</option>
+        </select>
+        <select id="status-filter">
+          <option value="all">Todos los estados</option>
+          <option value="pending">Pendientes</option>
+          <option value="paid">Pagados</option>
+        </select>
+        <select id="sort">
+          <option value="due">Ordenar: proximo pago</option>
+          <option value="price">Ordenar: mayor precio</option>
+          <option value="name">Ordenar: nombre</option>
+        </select>
+      </section>
+      <section id="cards" class="grid"></section>
+      <div class="actions" style="margin-top: 22px">
+        <button id="open-add">+ Agregar gasto</button
+        ><button id="enable-notifications" class="secondary">
+          Activar notificaciones
+        </button>
+      </div>
+    </main>
+    <div id="editor" class="modal">
+      <form id="form" class="box">
+        <h2 id="form-title">Nuevo gasto</h2>
+        <div class="form-grid">
+          <div class="field wide">
+            <label for="name">Nombre</label
+            ><input
+              id="name"
+              required
+              maxlength="60"
+              placeholder="Ej. Netflix"
+            />
+          </div>
+          <div class="field">
+            <label for="price">Precio mensual (USD)</label
+            ><input
+              id="price"
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              placeholder="10"
+            />
+          </div>
+          <div class="field">
+            <label for="day">Dia de pago</label
+            ><input
+              id="day"
+              type="number"
+              min="1"
+              max="31"
+              required
+              placeholder="15"
+            />
+          </div>
+          <div class="field">
+            <label for="category">Categoria</label
+            ><input
+              id="category"
+              list="categories"
+              required
+              placeholder="Ej. Streaming"
+            /><datalist id="categories">
+              <option>Streaming</option>
+              <option>Trabajo</option>
+              <option>Salud</option>
+              <option>Almacenamiento</option>
+              <option>Educacion</option>
+              <option>Otros</option>
+            </datalist>
+          </div>
+          <div class="field">
+            <label for="icon">Icono</label
+            ><input
+              id="icon"
+              maxlength="4"
+              required
+              value="$"
+              placeholder="$"
+            />
+          </div>
+          <div class="field wide">
+            <label for="color">Color del icono</label
+            ><input id="color" type="color" value="#8bb8ff" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="secondary" data-close="editor">
+            Cancelar</button
+          ><button>Guardar</button>
+        </div>
+      </form>
+    </div>
+    <div id="history-modal" class="modal">
+      <section class="box">
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+          "
+        >
+          <h2 id="history-title">Historial de precios</h2>
+          <button class="secondary" data-close="history-modal">Cerrar</button>
+        </div>
+        <div id="history-list"></div>
+      </section>
+    </div>
+    <div id="toast" class="toast hidden"></div>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+      import {
+        getAuth,
+        GoogleAuthProvider,
+        onAuthStateChanged,
+        signInWithPopup,
+        signOut,
+      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+      import {
+        addDoc,
+        collection,
+        deleteDoc,
+        doc,
+        getDocs,
+        getFirestore,
+        onSnapshot,
+        orderBy,
+        query,
+        updateDoc,
+      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
- const firebaseConfig={apiKey:'AIzaSyCjVjn_AUCainS0C42Qi_hCIYzEQUXh4U4',authDomain:'gastos-mensuales-4b773.firebaseapp.com',projectId:'gastos-mensuales-4b773',storageBucket:'gastos-mensuales-4b773.firebasestorage.app',messagingSenderId:'307168135013',appId:'1:307168135013:web:ad7a7c7fe464124cfe438c'};
- const db=getFirestore(initializeApp(firebaseConfig));
- const subscriptions=collection(db,'subscriptions');
- const seed=[{name:'OpenCode Go',price:10,day:17,icon:'⌘'},{name:'Gimnasio',price:20,day:29,icon:'✦'},{name:'iCloud',price:3,day:16,icon:'I'},{name:'Gmail',price:1,day:2,icon:'G'},{name:'ABACUS IA',price:20,day:4,icon:'A'},{name:'ChatGPT Plus',price:20,day:1,icon:'C'}];
- let items=[];
- const $=s=>document.querySelector(s); const money=n=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'USD'}).format(n);
- function render(){ $('#cards').innerHTML=items.map(x=>`<article class="card"><button class="remove" title="Eliminar" data-id="${x.id}">×</button><div class="icon">${x.icon||x.name[0].toUpperCase()}</div><h2>${escapeHtml(x.name)}</h2><div class="price">${money(Number(x.price))} <span>/ mes</span></div><div class="date">Próximo pago: <b>día ${x.day}</b> de cada mes</div></article>`).join('');$('#total').textContent=money(items.reduce((a,x)=>a+Number(x.price),0))}
- function escapeHtml(s){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
- async function seedDatabase(){const existing=await getDocs(subscriptions);if(existing.empty)await Promise.all(seed.map(item=>addDoc(subscriptions,item)))}
- $('#cards').onclick=async e=>{const button=e.target.closest('.remove');if(!button)return;const item=items.find(x=>x.id===button.dataset.id);if(item&&confirm(`¿Eliminar ${item.name}?`))await deleteDoc(doc(db,'subscriptions',item.id))};
- $('#open').onclick=()=>$('#modal').classList.add('open');$('#close').onclick=()=>$('#modal').classList.remove('open');$('#form').onsubmit=async e=>{e.preventDefault();const name=$('#name').value.trim();await addDoc(subscriptions,{name,price:Number($('#price').value),day:Number($('#day').value),icon:name[0].toUpperCase()});e.target.reset();$('#modal').classList.remove('open')};
- onSnapshot(subscriptions,snapshot=>{items=snapshot.docs.map(x=>({id:x.id,...x.data()}));render()},error=>alert(`No se pudo cargar la base de datos: ${error.message}`));
- seedDatabase().catch(error=>alert(`No se pudo preparar la base de datos: ${error.message}`));
- </script>
-</body></html>
+      const firebaseConfig = {
+        apiKey: "AIzaSyCjVjn_AUCainS0C42Qi_hCIYzEQUXh4U4",
+        authDomain: "gastos-mensuales-4b773.firebaseapp.com",
+        projectId: "gastos-mensuales-4b773",
+        storageBucket: "gastos-mensuales-4b773.firebasestorage.app",
+        messagingSenderId: "307168135013",
+        appId: "1:307168135013:web:ad7a7c7fe464124cfe438c",
+      };
+      const app = initializeApp(firebaseConfig),
+        db = getFirestore(app),
+        auth = getAuth(app),
+        provider = new GoogleAuthProvider();
+      const $ = (selector) => document.querySelector(selector),
+        money = (value) =>
+          new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+          }).format(Number(value) || 0);
+      const monthKey = () => {
+        const date = new Date();
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      };
+      const escapeHtml = (value) =>
+        String(value).replace(
+          /[&<>'"]/g,
+          (char) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              "'": "&#39;",
+              '"': "&quot;",
+            })[char],
+        );
+      let user,
+        subscriptions,
+        unsubscribe,
+        items = [],
+        editingId;
+
+      function isPaid(item) {
+        return item.paidMonth === monthKey();
+      }
+      function dueInfo(item) {
+        const now = new Date(),
+          today = new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+          due = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            Math.min(Number(item.day), 31),
+          );
+        if (due < today) due.setMonth(due.getMonth() + 1);
+        const days = Math.round((due - today) / 86400000);
+        return {
+          days,
+          label:
+            days === 0
+              ? "Vence hoy"
+              : days === 1
+                ? "Vence manana"
+                : `Vence en ${days} dias`,
+        };
+      }
+      function render() {
+        const paid = items.filter(isPaid),
+          monthly = items.reduce((sum, item) => sum + Number(item.price), 0),
+          paidAmount = paid.reduce((sum, item) => sum + Number(item.price), 0),
+          pending = monthly - paidAmount;
+        $("#monthly-total").textContent = money(monthly);
+        $("#yearly-total").textContent = money(monthly * 12);
+        $("#paid-total").textContent = money(paidAmount);
+        $("#pending-total").textContent = money(pending);
+        $("#payment-progress").style.width =
+          `${monthly ? (paidAmount / monthly) * 100 : 0}%`;
+        const categories = [
+          ...new Set(items.map((item) => item.category).filter(Boolean)),
+        ].sort();
+        const selected = $("#category-filter").value;
+        $("#category-filter").innerHTML =
+          '<option value="all">Todas las categorias</option>' +
+          categories
+            .map(
+              (category) =>
+                `<option ${category === selected ? "selected" : ""}>${escapeHtml(category)}</option>`,
+            )
+            .join("");
+        const search = $("#search").value.trim().toLowerCase(),
+          category = $("#category-filter").value,
+          status = $("#status-filter").value,
+          sort = $("#sort").value;
+        let visible = items.filter(
+          (item) =>
+            (!search || item.name.toLowerCase().includes(search)) &&
+            (category === "all" || item.category === category) &&
+            (status === "all" || (status === "paid") === isPaid(item)),
+        );
+        visible.sort((a, b) =>
+          sort === "price"
+            ? Number(b.price) - Number(a.price)
+            : sort === "name"
+              ? a.name.localeCompare(b.name)
+              : dueInfo(a).days - dueInfo(b).days,
+        );
+        $("#cards").innerHTML = visible.length
+          ? visible
+              .map((item) => {
+                const paidItem = isPaid(item),
+                  due = dueInfo(item),
+                  badge = paidItem
+                    ? '<span class="badge paid-badge">Pagado</span>'
+                    : due.days === 0
+                      ? '<span class="badge due-today">Vence hoy</span>'
+                      : due.days <= 7
+                        ? '<span class="badge due-week">' +
+                          due.label +
+                          "</span>"
+                        : "<span>" + due.label + "</span>";
+                return `<article class="card ${paidItem ? "paid-card" : ""}"><button class="icon-btn" data-action="edit" data-id="${item.id}" title="Editar">...</button><div class="card-head"><div class="icon" style="background:${escapeHtml(item.color || "#8bb8ff")}">${escapeHtml(item.icon || "$")}</div><div><h2>${escapeHtml(item.name)}</h2><div class="category">${escapeHtml(item.category || "Otros")}</div></div></div><div class="price">${money(item.price)} <span class="muted" style="font-size:13px;font-weight:500">/ mes</span></div><div class="meta"><span>Pago: dia ${item.day}</span>${badge}</div><div class="actions"><button data-action="paid" data-id="${item.id}">${paidItem ? "Desmarcar pago" : "Marcar pagado"}</button><button class="secondary" data-action="history" data-id="${item.id}">Historial</button></div></article>`;
+              })
+              .join("")
+          : '<div class="empty">No hay gastos que coincidan. Agrega el primero para comenzar.</div>';
+        renderAlerts();
+        checkNotifications();
+      }
+      function renderAlerts() {
+        const upcoming = items
+          .filter((item) => !isPaid(item) && dueInfo(item).days <= 7)
+          .sort((a, b) => dueInfo(a).days - dueInfo(b).days);
+        $("#alerts").innerHTML = upcoming
+          .map(
+            (item) =>
+              `<span class="alert">${dueInfo(item).days === 0 ? "Hoy" : dueInfo(item).label}: <b>${escapeHtml(item.name)}</b> (${money(item.price)})</span>`,
+          )
+          .join("");
+      }
+      function checkNotifications() {
+        if (
+          !("Notification" in window) ||
+          Notification.permission !== "granted"
+        )
+          return;
+        const date = new Date(),
+          today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        items
+          .filter((item) => !isPaid(item) && dueInfo(item).days <= 7)
+          .forEach((item) => {
+            const key = `notice-${today}-${item.id}`;
+            if (!sessionStorage.getItem(key)) {
+              new Notification(`Gastos mensuales: ${dueInfo(item).label}`, {
+                body: `${item.name}: ${money(item.price)}`,
+                tag: key,
+              });
+              sessionStorage.setItem(key, "1");
+            }
+          });
+      }
+      function openEditor(item) {
+        editingId = item?.id;
+        $("#form-title").textContent = item ? "Editar gasto" : "Nuevo gasto";
+        $("#name").value = item?.name || "";
+        $("#price").value = item?.price || "";
+        $("#day").value = item?.day || "";
+        $("#category").value = item?.category || "";
+        $("#icon").value = item?.icon || "$";
+        $("#color").value = item?.color || "#8bb8ff";
+        $("#editor").classList.add("open");
+        $("#name").focus();
+      }
+      async function saveExpense(event) {
+        event.preventDefault();
+        const data = {
+          name: $("#name").value.trim(),
+          price: Number($("#price").value),
+          day: Number($("#day").value),
+          category: $("#category").value.trim(),
+          icon: $("#icon").value.trim() || "$",
+          color: $("#color").value,
+        };
+        if (editingId) {
+          const old = items.find((item) => item.id === editingId);
+          await updateDoc(doc(subscriptions, editingId), data);
+          if (old.price !== data.price)
+            await addDoc(
+              collection(doc(subscriptions, editingId), "priceHistory"),
+              { price: data.price, changedAt: new Date().toISOString() },
+            );
+        } else {
+          const created = await addDoc(subscriptions, {
+            ...data,
+            paidMonth: null,
+            createdAt: new Date().toISOString(),
+          });
+          await addDoc(collection(created, "priceHistory"), {
+            price: data.price,
+            changedAt: new Date().toISOString(),
+          });
+        }
+        $("#editor").classList.remove("open");
+        showToast(editingId ? "Gasto actualizado" : "Gasto agregado");
+      }
+      async function showHistory(id) {
+        const item = items.find((entry) => entry.id === id),
+          snapshot = await getDocs(
+            query(
+              collection(doc(subscriptions, id), "priceHistory"),
+              orderBy("changedAt", "desc"),
+            ),
+          );
+        $("#history-title").textContent = `Historial: ${item.name}`;
+        $("#history-list").innerHTML = snapshot.empty
+          ? '<p class="muted">Aun no hay cambios de precio.</p>'
+          : snapshot.docs
+              .map(
+                (entry) =>
+                  `<div class="history-row"><b>${money(entry.data().price)}</b><span class="muted">${new Date(entry.data().changedAt).toLocaleDateString("es-MX")}</span></div>`,
+              )
+              .join("");
+        $("#history-modal").classList.add("open");
+      }
+      function showToast(message) {
+        $("#toast").textContent = message;
+        $("#toast").classList.remove("hidden");
+        setTimeout(() => $("#toast").classList.add("hidden"), 2600);
+      }
+      async function handleCard(event) {
+        const button = event.target.closest("[data-action]");
+        if (!button) return;
+        const id = button.dataset.id,
+          action = button.dataset.action,
+          item = items.find((entry) => entry.id === id);
+        if (action === "edit") openEditor(item);
+        if (action === "paid") {
+          await updateDoc(doc(subscriptions, id), {
+            paidMonth: isPaid(item) ? null : monthKey(),
+            paidAt: isPaid(item) ? null : new Date().toISOString(),
+          });
+        }
+        if (action === "history") showHistory(id);
+      }
+      function startUser(currentUser) {
+        user = currentUser;
+        subscriptions = collection(db, "users", user.uid, "subscriptions");
+        $("#login").classList.add("hidden");
+        $("#app").classList.remove("hidden");
+        $("#user-name").textContent = user.displayName || "Mi cuenta";
+        $("#user-email").textContent = user.email || "";
+        $("#avatar").src = user.photoURL || "";
+        unsubscribe?.();
+        unsubscribe = onSnapshot(
+          subscriptions,
+          (snapshot) => {
+            items = snapshot.docs.map((entry) => ({
+              id: entry.id,
+              ...entry.data(),
+            }));
+            render();
+          },
+          (error) =>
+            alert(`No se pudieron cargar tus gastos: ${error.message}`),
+        );
+      }
+      $("#sign-in").onclick = async () => {
+        try {
+          await signInWithPopup(auth, provider);
+        } catch (error) {
+          alert(`No se pudo iniciar sesion: ${error.message}`);
+        }
+      };
+      $("#sign-out").onclick = () => signOut(auth);
+      $("#open-add").onclick = () => openEditor();
+      $("#form").onsubmit = saveExpense;
+      $("#cards").onclick = handleCard;
+      $("#search").oninput = render;
+      $("#category-filter").onchange = render;
+      $("#status-filter").onchange = render;
+      $("#sort").onchange = render;
+      document
+        .querySelectorAll("[data-close]")
+        .forEach(
+          (button) =>
+            (button.onclick = () =>
+              $("#" + button.dataset.close).classList.remove("open")),
+        );
+      $("#enable-notifications").onclick = async () => {
+        if (!("Notification" in window))
+          return alert("Tu navegador no admite notificaciones.");
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+          showToast("Notificaciones activadas");
+          checkNotifications();
+        } else alert("No autorizaste las notificaciones.");
+      };
+      onAuthStateChanged(auth, (currentUser) => {
+        if (currentUser) startUser(currentUser);
+        else {
+          $("#app").classList.add("hidden");
+          $("#login").classList.remove("hidden");
+          unsubscribe?.();
+          items = [];
+        }
+      });
+      setInterval(checkNotifications, 3600000);
+    </script>
+  </body>
+</html>
