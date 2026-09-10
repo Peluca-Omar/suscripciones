@@ -15,13 +15,23 @@
  <button class="add" id="open">＋ Agregar suscripción</button>
 </main>
 <div class="modal" id="modal"><form class="box" id="form"><h2>Nueva suscripción</h2><label>Nombre</label><input id="name" required placeholder="Ej. Netflix"><label>Precio mensual ($)</label><input id="price" type="number" min="0" step="0.01" required placeholder="10"><label>Día de pago (1-31)</label><input id="day" type="number" min="1" max="31" required placeholder="15"><div class="actions"><button type="button" class="cancel" id="close">Cancelar</button><button>Agregar</button></div></form></div>
-<script>
-const seed=[{name:'OpenCode Go',price:10,day:17,icon:'⌘'},{name:'Gimnasio',price:20,day:29,icon:'✦'},{name:'iCloud',price:3,day:16,icon:'I'},{name:'Gmail',price:1,day:2,icon:'G'},{name:'ABACUS IA',price:20,day:4,icon:'A'},{name:'ChatGPT Plus',price:20,day:1,icon:'C'}];
-let items=JSON.parse(localStorage.getItem('subscriptions')||'null')||seed;
-const $=s=>document.querySelector(s); const money=n=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'USD'}).format(n);
-function render(){ $('#cards').innerHTML=items.map((x,i)=>`<article class="card"><button class="remove" title="Eliminar" onclick="removeItem(${i})">×</button><div class="icon">${x.icon||x.name[0].toUpperCase()}</div><h2>${escapeHtml(x.name)}</h2><div class="price">${money(Number(x.price))} <span>/ mes</span></div><div class="date">Próximo pago: <b>día ${x.day}</b> de cada mes</div></article>`).join('');$('#total').textContent=money(items.reduce((a,x)=>a+Number(x.price),0));localStorage.setItem('subscriptions',JSON.stringify(items))}
-function escapeHtml(s){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function removeItem(i){if(confirm(`¿Eliminar ${items[i].name}?`)){items.splice(i,1);render()}}
-$('#open').onclick=()=>$('#modal').classList.add('open');$('#close').onclick=()=>$('#modal').classList.remove('open');$('#form').onsubmit=e=>{e.preventDefault();items.push({name:$('#name').value,price:$('#price').value,day:$('#day').value,icon:$('#name').value[0].toUpperCase()});render();e.target.reset();$('#modal').classList.remove('open')};render();
-</script>
+ <script type="module">
+ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+ import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+ import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+ const firebaseConfig={apiKey:'AIzaSyCjVjn_AUCainS0C42Qi_hCIYzEQUXh4U4',authDomain:'gastos-mensuales-4b773.firebaseapp.com',projectId:'gastos-mensuales-4b773',storageBucket:'gastos-mensuales-4b773.firebasestorage.app',messagingSenderId:'307168135013',appId:'1:307168135013:web:ad7a7c7fe464124cfe438c'};
+ const db=getFirestore(initializeApp(firebaseConfig));
+ const subscriptions=collection(db,'subscriptions');
+ const seed=[{name:'OpenCode Go',price:10,day:17,icon:'⌘'},{name:'Gimnasio',price:20,day:29,icon:'✦'},{name:'iCloud',price:3,day:16,icon:'I'},{name:'Gmail',price:1,day:2,icon:'G'},{name:'ABACUS IA',price:20,day:4,icon:'A'},{name:'ChatGPT Plus',price:20,day:1,icon:'C'}];
+ let items=[];
+ const $=s=>document.querySelector(s); const money=n=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'USD'}).format(n);
+ function render(){ $('#cards').innerHTML=items.map(x=>`<article class="card"><button class="remove" title="Eliminar" data-id="${x.id}">×</button><div class="icon">${x.icon||x.name[0].toUpperCase()}</div><h2>${escapeHtml(x.name)}</h2><div class="price">${money(Number(x.price))} <span>/ mes</span></div><div class="date">Próximo pago: <b>día ${x.day}</b> de cada mes</div></article>`).join('');$('#total').textContent=money(items.reduce((a,x)=>a+Number(x.price),0))}
+ function escapeHtml(s){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+ async function seedDatabase(){const existing=await getDocs(subscriptions);if(existing.empty)await Promise.all(seed.map(item=>addDoc(subscriptions,item)))}
+ $('#cards').onclick=async e=>{const button=e.target.closest('.remove');if(!button)return;const item=items.find(x=>x.id===button.dataset.id);if(item&&confirm(`¿Eliminar ${item.name}?`))await deleteDoc(doc(db,'subscriptions',item.id))};
+ $('#open').onclick=()=>$('#modal').classList.add('open');$('#close').onclick=()=>$('#modal').classList.remove('open');$('#form').onsubmit=async e=>{e.preventDefault();const name=$('#name').value.trim();await addDoc(subscriptions,{name,price:Number($('#price').value),day:Number($('#day').value),icon:name[0].toUpperCase()});e.target.reset();$('#modal').classList.remove('open')};
+ onSnapshot(subscriptions,snapshot=>{items=snapshot.docs.map(x=>({id:x.id,...x.data()}));render()},error=>alert(`No se pudo cargar la base de datos: ${error.message}`));
+ seedDatabase().catch(error=>alert(`No se pudo preparar la base de datos: ${error.message}`));
+ </script>
 </body></html>
