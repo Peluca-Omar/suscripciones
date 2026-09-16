@@ -434,6 +434,7 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="mi-dinero.css" />
   </head>
   <body>
     <section id="login" class="login">
@@ -462,6 +463,12 @@
           <button id="sign-out" class="secondary">Salir</button>
         </div>
       </header>
+      <nav class="money-nav" aria-label="Secciones">
+        <a href="#gastos" id="nav-fixed" aria-current="page">Gastos mensuales</a>
+        <a href="#mi-dinero" id="nav-money">Mi Dinero</a>
+      </nav>
+      <p id="local-preview-note" class="money-preview hidden">Prueba local · Datos de ejemplo guardados en este navegador.</p>
+      <div id="fixed-page">
       <section class="summary">
         <article class="stat">
           <small>TOTAL MENSUAL</small><strong id="monthly-total">$0.00</strong>
@@ -501,7 +508,20 @@
           Activar notificaciones
         </button>
       </div>
+      </div>
+      <section id="money-page" class="md-page hidden" aria-label="Mi Dinero"></section>
     </main>
+    <dialog id="money-dialog" class="md-dialog" aria-labelledby="money-dialog-title">
+      <form id="money-form">
+        <h2 id="money-dialog-title"></h2>
+        <div id="money-fields"></div>
+        <p id="money-error" role="alert"></p>
+        <div class="md-actions">
+          <button type="button" class="secondary" id="money-cancel">Cancelar</button>
+          <button type="submit" id="money-save">Guardar</button>
+        </div>
+      </form>
+    </dialog>
     <div id="editor" class="modal">
       <form id="form" class="box">
         <h2 id="form-title">Nuevo gasto</h2>
@@ -569,6 +589,7 @@
           </div>
         </div>
         <div class="form-actions">
+          <button type="button" id="delete-expense" class="danger hidden">Eliminar gasto</button>
           <button type="button" class="secondary" data-close="editor">
             Cancelar</button
           ><button>Guardar</button>
@@ -593,15 +614,9 @@
     </div>
     <div id="toast" class="toast hidden"></div>
     <script type="module">
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
       import {
-        getAuth,
-        GoogleAuthProvider,
-        onAuthStateChanged,
-        signInWithPopup,
-        signOut,
-      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-      import {
+        initializeApp, getAuth, GoogleAuthProvider, onAuthStateChanged,
+        signInWithPopup, signOut, isLocalPreview,
         addDoc,
         collection,
         deleteDoc,
@@ -612,7 +627,9 @@
         orderBy,
         query,
         updateDoc,
-      } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+      } from "./backend.js";
+      import { MoneyStore } from "./money-store.js";
+      import { MoneyPage } from "./mi-dinero.js";
 
       const firebaseConfig = {
         apiKey: "AIzaSyCjVjn_AUCaihsOC42Qi_hClYzEQuXh4U4",
@@ -652,10 +669,28 @@
         subscriptions,
         unsubscribe,
         items = [],
-        editingId;
+        editingId,
+        moneyStore;
+      const moneyPage = new MoneyPage($("#money-page"), showToast);
+      function route() {
+        const moneyVisible = location.hash === "#mi-dinero";
+        $("#fixed-page").classList.toggle("hidden", moneyVisible);
+        $("#money-page").classList.toggle("hidden", !moneyVisible);
+        $("#nav-fixed").toggleAttribute("aria-current", !moneyVisible);
+        $("#nav-money").toggleAttribute("aria-current", moneyVisible);
+        if (moneyVisible) $("#nav-money").setAttribute("aria-current", "page");
+        else $("#nav-fixed").setAttribute("aria-current", "page");
+        moneyPage.render();
+      }
+      window.addEventListener("hashchange", route);
+      if (isLocalPreview) {
+        $("#local-preview-note").classList.remove("hidden");
+        $("#sign-in").textContent = "Entrar a prueba local";
+      }
+      route();
 
       function isPaid(item) {
-        return item.paidMonth === monthKey();
+        return moneyStore ? moneyStore.isPaid(item, monthKey()) : item.paidMonth === monthKey();
       }
       function dueInfo(item) {
         const now = new Date(),
@@ -680,14 +715,15 @@
       function render() {
         const paid = items.filter(isPaid),
           monthly = items.reduce((sum, item) => sum + Number(item.price), 0),
-          paidAmount = paid.reduce((sum, item) => sum + Number(item.price), 0),
-          pending = monthly - paidAmount;
+          paidAmount = moneyStore?.ready ? moneyStore.paidTotal(monthKey()) / 100 : paid.reduce((sum, item) => sum + Number(item.price), 0),
+          scheduledPaid = paid.reduce((sum, item) => sum + Number(item.price), 0),
+          pending = monthly - scheduledPaid;
         $("#monthly-total").textContent = money(monthly);
         $("#yearly-total").textContent = money(monthly * 12);
         $("#paid-total").textContent = money(paidAmount);
         $("#pending-total").textContent = money(pending);
         $("#payment-progress").style.width =
-          `${monthly ? (paidAmount / monthly) * 100 : 0}%`;
+          `${monthly ? (scheduledPaid / monthly) * 100 : 0}%`;
         const categories = [
           ...new Set(items.map((item) => item.category).filter(Boolean)),
         ].sort();
@@ -772,6 +808,7 @@
       }
       function openEditor(item) {
         editingId = item?.id;
+        $("#delete-expense").classList.toggle("hidden", !item);
         $("#form-title").textContent = item ? "Editar gasto" : "Nuevo gasto";
         $("#name").value = item?.name || "";
         $("#price").value = item?.price || "";
@@ -794,6 +831,7 @@
         };
         if (editingId) {
           const old = items.find((item) => item.id === editingId);
+          await moneyStore.importExistingPayments([old]);
           await updateDoc(doc(subscriptions, editingId), data);
           if (old.price !== data.price)
             await addDoc(
@@ -846,16 +884,31 @@
           item = items.find((entry) => entry.id === id);
         if (action === "edit") openEditor(item);
         if (action === "paid") {
-          await updateDoc(doc(subscriptions, id), {
-            paidMonth: isPaid(item) ? null : monthKey(),
-            paidAt: isPaid(item) ? null : new Date().toISOString(),
-          });
+          if (!moneyStore?.ready) return alert("Espera a que termine de cargar Mi Dinero.");
+          const undo = isPaid(item);
+          if (undo && !confirm("¿Desmarcar este pago? Se eliminará ese movimiento y se devolverá su valor al saldo disponible.")) return;
+          button.disabled = true;
+          try {
+            await moneyStore.setPaid(id, !undo);
+            showToast(undo ? "Pago desmarcado. Saldo actualizado." : "Pago registrado y descontado de Mi Dinero.");
+          } catch (error) { alert(error.message); }
+          finally { button.disabled = false; }
         }
         if (action === "history") showHistory(id);
       }
       function startUser(currentUser) {
         user = currentUser;
+        items = [];
         subscriptions = collection(db, "users", user.uid, "subscriptions");
+        moneyStore?.stop();
+        const currentStore = new MoneyStore(db, user.uid);
+        moneyStore = currentStore;
+        moneyPage.setStore(currentStore);
+        currentStore.start(() => {
+          if (moneyStore !== currentStore) return;
+          render();
+          moneyPage.render();
+        }, (error) => { if (moneyStore === currentStore) { moneyPage.render(); alert(`No se pudo cargar Mi Dinero: ${error.message}`); } });
         $("#login").classList.add("hidden");
         $("#app").classList.remove("hidden");
         $("#user-name").textContent = user.displayName || "Mi cuenta";
@@ -865,11 +918,15 @@
         unsubscribe = onSnapshot(
           subscriptions,
           (snapshot) => {
+            if (moneyStore !== currentStore) return;
             items = snapshot.docs.map((entry) => ({
               id: entry.id,
               ...entry.data(),
             }));
             render();
+            currentStore.importExistingPayments(items).catch(error => {
+              if (moneyStore === currentStore) alert(`No se pudieron incorporar los pagos existentes: ${error.message}`);
+            });
           },
           (error) =>
             alert(`No se pudieron cargar tus gastos: ${error.message}`),
@@ -884,7 +941,25 @@
       };
       $("#sign-out").onclick = () => signOut(auth);
       $("#open-add").onclick = () => openEditor();
-      $("#form").onsubmit = saveExpense;
+      $("#delete-expense").onclick = async () => {
+        if (!editingId || !moneyStore?.ready) return;
+        if (!confirm("¿Eliminar este gasto mensual? Sus pagos anteriores permanecerán registrados y descontados del saldo.")) return;
+        const button = $("#delete-expense");
+        button.disabled = true;
+        try {
+          await moneyStore.deleteExpense(editingId);
+          $("#editor").classList.remove("open");
+          showToast("Gasto eliminado. Los pagos anteriores se conservaron.");
+        } catch (error) { alert(error.message); }
+        finally { button.disabled = false; }
+      };
+      $("#form").onsubmit = async (event) => {
+        const submit = $("#form button:not([type=button])");
+        submit.disabled = true;
+        try { await saveExpense(event); }
+        catch (error) { alert(`No se pudo guardar el gasto: ${error.message}`); }
+        finally { submit.disabled = false; }
+      };
       $("#cards").onclick = handleCard;
       $("#search").oninput = render;
       $("#category-filter").onchange = render;
@@ -912,6 +987,10 @@
           $("#app").classList.add("hidden");
           $("#login").classList.remove("hidden");
           unsubscribe?.();
+          moneyStore?.stop();
+          moneyStore = null;
+          moneyPage.setStore(null);
+          document.querySelectorAll(".modal.open").forEach(modal => modal.classList.remove("open"));
           items = [];
         }
       });
