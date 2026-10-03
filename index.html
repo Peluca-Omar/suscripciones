@@ -511,6 +511,13 @@
       </div>
       <section id="money-page" class="md-page hidden" aria-label="Mi Dinero"></section>
     </main>
+    <dialog id="money-report-dialog" class="md-report-dialog" aria-labelledby="money-report-title">
+      <div class="md-report-toolbar">
+        <div><h2 id="money-report-title">Informe financiero mensual</h2><p>Para obtener el PDF, pulsa «Guardar como PDF» y elige ese destino en la ventana de impresión.</p></div>
+        <div class="md-actions"><button type="button" data-money-action="print-report" id="money-report-print" disabled>Guardar como PDF</button><button type="button" class="secondary" data-money-action="download-report">Descargar CSV</button><button type="button" class="secondary" data-money-action="close-report">Cerrar</button></div>
+      </div>
+      <iframe id="money-report-preview" title="Vista previa del informe financiero mensual"></iframe>
+    </dialog>
     <dialog id="money-dialog" class="md-dialog" aria-labelledby="money-dialog-title">
       <form id="money-form">
         <h2 id="money-dialog-title"></h2>

@@ -32,12 +32,12 @@ export function ledger(state) {
   return [...state.movements].sort((a,b)=>a.date.localeCompare(b.date)||a.order-b.order).map(m=>({...m,balance:total+=sign(m)}));
 }
 export function summary(state,month) {
-  const result={income:0,fixed:0,variable:0,previous:0,closing:0,spent:0,net:0};
+  const result={income:0,fixed:0,variable:0,opening:0,previous:0,closing:0,spent:0,net:0};
   state.movements.forEach(m=>{
     const key=m.date.slice(0,7);
     if(key<month)result.previous+=sign(m);
     if(key<=month)result.closing+=sign(m);
-    if(key===month && ['income','fixed','variable'].includes(m.type))result[m.type]+=m.amount;
+    if(key===month && ['income','fixed','variable','opening'].includes(m.type))result[m.type]+=m.amount;
   });
   result.spent=result.fixed+result.variable;
   result.net=result.income-result.spent;
