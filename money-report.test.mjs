@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState,readState,saveMovement,balance,initializeAccounts,today,monthKey} from './money-model.mjs';
+import {initialState,readState,saveMovement,balance,initializeAccounts,initializeAddedAccounts,today,monthKey} from './money-model.mjs';
 import {monthlyReport,reportCSV,reportHTML} from './money-report.mjs';
 
 function accounts() {
@@ -58,18 +58,19 @@ test('CSV estable con importes numéricos, negativos, decimales y ceros',()=>{
   assert.equal(csv.charCodeAt(0),0xfeff);
   const parse=line=>line.split(',').map(value=>value.replace(/^"|"$/g,''));
   const [headers,values]=csv.slice(1).trim().split('\r\n').map(parse);
-  assert.equal(headers.length,16);assert.equal(values.length,16);
+  assert.equal(headers.length,17);assert.equal(values.length,17);
   const data=Object.fromEntries(headers.map((key,i)=>[key,values[i]]));
-  assert.equal(data.version_plantilla,'2');assert.equal(data.mes,'2025-01');assert.equal(data.moneda,'USD');
+  assert.equal(data.version_plantilla,'3');assert.equal(data.mes,'2025-01');assert.equal(data.moneda,'USD');
   assert.equal(data.ingresos,'12.34');assert.equal(data.resultado_del_mes,'-487.66');
   assert.equal(data.ajuste_inicio_cuentas,'0.00');
+  assert.equal(data.saldo_inicial_cuenta_nueva,'0.00');
   assert.equal(data.saldo_inicial_del_mes,'0.00');assert.equal(data.saldo_al_cierre,'512.34');
   assert.equal(headers.join(','),parse(reportCSV(monthlyReport(state,'2025-04')).slice(1).split('\r\n')[0]).join(','));
 });
 
 test('el informe concilia el historial con los saldos ingresados al activar las cuentas',()=>{
   const state=accounts(),legacyBalance=balance(state),total=33333;
-  initializeAccounts(state,{pichincha:10000,bolivariano:10000,jep:10000,cash:3333},today());
+  initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:10000,jep:10000,cash:3333},today());
   const report=monthlyReport(state,monthKey(),'Cuenta',today());
   assert.equal(report.setupAdjustment,total-legacyBalance);
   assert.equal(report.closing,total);
@@ -80,6 +81,23 @@ test('el informe concilia el historial con los saldos ingresados al activar las 
   const data=Object.fromEntries(headers.map((key,i)=>[key,values[i]]));
   assert.equal(data.ajuste_inicio_cuentas,((total-legacyBalance)/100).toFixed(2));
   assert.equal(data.saldo_al_cierre,(total/100).toFixed(2));
+});
+
+test('el informe muestra el saldo de una cuenta nueva separado de ingresos y gastos',()=>{
+  const state=accounts(),date=today();
+  initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:10000,jep:10000,cash:3333},date);
+  state.accounts.find(account=>account.id==='flexi-ahorro').needsOpeningBalance=true;
+  initializeAddedAccounts(state,{'flexi-ahorro':12500},date);
+  const report=monthlyReport(state,monthKey(),'Cuenta',date);
+  assert.equal(report.accountOpening,12500);
+  assert.equal(report.income,0);
+  assert.equal(report.spent,0);
+  assert.match(reportHTML(report,'money-report.css'),/Saldo inicial de cuenta añadida/);
+  const parse=line=>line.split(',').map(value=>value.replace(/^"|"$/g,''));
+  const [headers,values]=reportCSV(report).slice(1).trim().split('\r\n').map(parse);
+  const data=Object.fromEntries(headers.map((key,i)=>[key,values[i]]));
+  assert.equal(data.saldo_inicial_cuenta_nueva,'125.00');
+  assert.equal(data.ingresos,'0.00');
 });
 
 test('se conserva el histórico presupuestario al leer el estado guardado',()=>{

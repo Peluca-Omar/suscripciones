@@ -779,7 +779,7 @@
                 const paidItem = isPaid(item),
                   due = dueInfo(item),
                   payment = moneyStore?.state.movements.find(m => m.type === "fixed" && m.subscriptionId === item.id && m.period === monthKey()),
-                  defaultAccount = moneyStore?.state.accounts.find(account => account.id === item.defaultAccountId),
+                  defaultAccount = moneyStore?.state.accounts.find(account => account.id === item.defaultAccountId && !account.needsOpeningBalance),
                   paidAccount = payment?.accountId && moneyStore?.state.accounts.find(account => account.id === payment.accountId),
                   badge = paidItem
                     ? '<span class="badge paid-badge">Pagado</span>'

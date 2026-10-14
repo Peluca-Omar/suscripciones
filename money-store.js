@@ -44,6 +44,9 @@ export class MoneyStore {
   async initializeAccounts(balances) {
     await this.change((tx,state)=>({value:M.initializeAccounts(state,balances)}));
   }
+  async initializeAddedAccounts(balances) {
+    await this.change((tx,state)=>({value:M.initializeAddedAccounts(state,balances)}));
+  }
   async importExistingPayments(items) {
     const candidates=items.filter(item=>M.validMonth(item.paidMonth) && !this.state.legacy[M.legacyKey(item)]);
     if(!candidates.length || !this.active)return;
