@@ -5,7 +5,7 @@ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const money=value=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(value/100);
 const dateLabel=value=>new Intl.DateTimeFormat('es',{day:'numeric',month:'short',year:'numeric'}).format(new Date(value+'T12:00:00'));
 const monthLabel=value=>new Intl.DateTimeFormat('es',{month:'long',year:'numeric'}).format(new Date(value+'-01T12:00:00'));
-const types={income:'Ingreso',opening:'Saldo inicial',variable:'Gasto variable',fixed:'Gasto fijo'};
+const types={income:'Ingreso',opening:'Saldo inicial',variable:'Gasto variable',fixed:'Gasto fijo',transfer:'Transferencia'};
 const button=(action,label,id='',style='secondary')=>`<button type="button" class="${style}" data-money-action="${action}" data-id="${escape(id)}">${label}</button>`;
 const field=(label,name,type,value='',extra='')=>`<label class="md-field">${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
 
@@ -38,21 +38,40 @@ export class MoneyPage {
   setStore(store) {this.store=store;this.month=M.monthKey();this.scope='month';this.type='all';this.submit=null;this.report=null;$('#money-dialog').close();$('#money-report-dialog').close();$('#money-report-preview').srcdoc='';this.render();}
   setSaving(value) {this.saving=value;$('#money-save').disabled=value;$('#money-save').textContent=value?'Guardando…':'Guardar';}
   error(error) {if($('#money-dialog').open)$('#money-error').textContent=error.message;else this.notify(error.message);}
-  categoryLabel(m) {return m.type==='fixed'?m.category || 'Gasto fijo':m.type==='opening'?'Saldo anterior':this.store.state.categories.find(c=>c.id===m.categoryId)?.name || 'Sin categoría';}
+  categoryLabel(m) {return m.type==='fixed'?m.category || 'Gasto fijo':m.type==='opening'?'Saldo anterior':m.type==='transfer'?'Entre mis cuentas':this.store.state.categories.find(c=>c.id===m.categoryId)?.name || 'Sin categoría';}
+  accountField(selected) {return `<fieldset class="md-account-choices"><legend>¿Desde qué cuenta?</legend><div>${this.store.state.accounts.map(account=>`<label class="md-account-choice"><input type="radio" name="accountId" value="${account.id}" ${account.id===(selected || this.store.state.lastAccountId || this.store.state.accounts[0].id)?'checked':''}><span>${escape(account.name)}</span></label>`).join('')}</div></fieldset>`;}
+  accountsForm() {
+    const state=this.store.state;
+    if(M.accountsActive(state))return;
+    const content=`<p class="muted">Ingresa lo que tienes disponible hoy en cada cuenta. El historial de pagos y gastos anteriores se conservará; estos saldos serán el punto de partida y no volverán a descontarse esos movimientos. Si una cuenta no tiene dinero, ingresa 0.</p><div class="md-opening-balances">${state.accounts.map(account=>field(account.name,`balance-${account.id}`,'number','','required min="0" max="1000000000" step="0.01" inputmode="decimal"')).join('')}</div>`;
+    this.dialog('Configura tus cuentas',content,data=>{
+      const balances=Object.fromEntries(state.accounts.map(account=>[account.id,M.cents(data[`balance-${account.id}`])]));
+      return this.store.initializeAccounts(balances);
+    });
+  }
+  fixedAccountPicker(id,mode='pay') {
+    if(!M.accountsActive(this.store.state)){this.accountsForm();return;}
+    if(!this.store.state.accounts.some(account=>account.id===id))throw new Error('Selecciona una cuenta válida.');
+    this.fixedAccountExpenseId=id;this.fixedAccountMode=mode;
+    const item=this.store.state.movements.find(m=>m.type==='fixed' && m.subscriptionId===id && m.period===M.monthKey());
+    this.dialog(mode==='pay'?'¿Desde qué cuenta pagaste?':'Cuenta habitual para este gasto',`<p class="muted">${mode==='pay'?'Al elegirla se registra el pago y quedará como cuenta habitual para la próxima vez.':'Se actualizará la cuenta habitual. Si el pago actual ya estaba asociado a una cuenta, también se corregirá.'}</p><div class="md-account-picker">${this.store.state.accounts.map(account=>button('select-fixed-account',`${escape(account.name)}${item?.accountId===account.id?' · pago actual':''}`,account.id,'secondary md-account-option')).join('')}</div>`,null);
+  }
   render() {
     if(!this.store?.ready){this.container.innerHTML=`<p class="muted">${escape(this.store?.error || 'Cargando Mi Dinero…')}</p>`;return;}
-    const state=this.store.state, summary=M.summary(state,this.month), opening=state.movements.find(m=>m.type==='opening');
+    const state=this.store.state, summary=M.summary(state,this.month), opening=state.movements.find(m=>m.type==='opening'),configured=M.accountsActive(state);
     const rows=M.ledger(state).filter(m=>(this.scope==='all' || m.date.slice(0,7)===this.month) && (this.type==='all' || m.type===this.type)).reverse();
     const limits=state.budgets[this.month] || {};
     const spent={};state.movements.filter(m=>m.type==='variable' && m.date.slice(0,7)===this.month).forEach(m=>spent[m.categoryId]=(spent[m.categoryId] || 0)+m.amount);
     const categories=state.categories.filter(c=>limits[c.id] || spent[c.id]);
     const months=[...new Set([this.month,M.monthKey(),...Object.keys(state.budgets).filter(key=>Object.keys(state.budgets[key]).length),...state.movements.map(m=>m.date.slice(0,7))])].filter(M.validMonth).sort().reverse();
+    const accountsPanel=configured?`<section class="md-account-panel"><div class="md-account-total"><div><small>SALDO TOTAL</small><strong id="md-balance">${money(M.balance(state))}</strong><p>Suma de tus saldos actuales. Los movimientos anteriores siguen disponibles en el historial.</p></div>${button('transfer','↔ Transferir dinero','','')}</div><div class="md-account-grid">${M.accountBalances(state).map(account=>`<article class="md-account-card md-account-${account.id}"><small>${escape(account.name)}</small><strong>${money(account.balance)}</strong><span>Saldo disponible</span></article>`).join('')}</div><p class="md-help">Saldos de partida registrados: ${dateLabel(state.accountsActivatedAt)}.</p></section>`:`<section class="md-setup-panel"><div class="md-setup-current"><small>SALDO SEGÚN EL HISTORIAL ACTUAL</small><strong>${money(M.balance(state))}</strong><p>Los pagos y gastos ya registrados se conservarán.</p></div><div><h3>Separa tu dinero por cuenta</h3><p class="md-help">Ingresa una vez los saldos que tienes hoy en Pichincha, Bolivariano, JEP y efectivo. El historial anterior no se volverá a descontar.</p><div class="md-actions">${button('setup-accounts','＋ Configurar mis cuentas','','')}</div></div></section>`;
     this.container.innerHTML=`
       <div class="md-heading"><div><div class="eyebrow">CONTROL DE DINERO</div><h2>Mi Dinero</h2><p class="muted">Tus ingresos, tus gastos diarios y lo que te queda.</p></div><div class="md-actions">${button('income','＋ Ingreso','','')}${button('expense','＋ Gasto')}</div></div>
-      <section class="md-balance"><div><small>DINERO DISPONIBLE</small><strong id="md-balance">${money(M.balance(state))}</strong><p>Saldo real acumulado. Continúa de un mes a otro.</p></div><div>${button('opening',opening?'Editar saldo inicial':'＋ Saldo inicial','','secondary')}<p class="md-help">${opening?'Registrado: '+money(opening.amount):'Registra el dinero que ya tienes una sola vez.'}</p></div></section>
+      ${accountsPanel}
+      ${!configured?`<div class="md-legacy-opening">${button('opening',opening?'Editar saldo inicial':'＋ Saldo inicial','','secondary')}<span class="md-help">${opening?'Registrado en el historial: '+money(opening.amount):'El saldo inicial anterior se conservará en el historial.'}</span></div>`:''}
       <section class="md-panel"><div class="md-heading"><h3>Resumen · ${escape(monthLabel(this.month))}</h3><div class="md-actions"><label class="md-month">Mes <input id="md-month" type="month" min="1900-01" max="9999-12" value="${this.month}"></label>${button('export-report','Exportar resumen mensual')}</div></div>
-      <div class="md-stats">${[['Ingresos del mes',summary.income,'md-positive'],['Gastos fijos pagados',summary.fixed,''],['Gastos variables',summary.variable,''],['Gastado este mes',summary.spent,'md-negative']].map(([label,value,style])=>`<article><small>${label}</small><strong class="${style}">${money(value)}</strong></article>`).join('')}</div>
-      <div class="md-month-results"><span>Ahorro / restante generado <b class="${summary.net<0?'md-negative':'md-positive'}">${money(summary.net)}</b></span><span>Saldo anterior <b>${money(summary.previous)}</b></span><span>Saldo al cierre del mes <b>${money(summary.closing)}</b></span></div><p class="md-help">El cierre incluye los movimientos registrados hasta ese mes. El saldo inicial no cuenta como ingreso. Este resumen es informativo y no reinicia el dinero disponible.</p></section>
+       <div class="md-stats">${[['Ingresos del mes',summary.income,'md-positive'],['Gastos fijos pagados',summary.fixed,''],['Gastos variables',summary.variable,''],['Gastado este mes',summary.spent,'md-negative']].map(([label,value,style])=>`<article><small>${label}</small><strong class="${style}">${money(value)}</strong></article>`).join('')}</div>
+       <div class="md-month-results"><span>Ahorro / restante generado <b class="${summary.net<0?'md-negative':'md-positive'}">${money(summary.net)}</b></span><span>Saldo anterior <b>${money(summary.previous)}</b></span>${summary.setupAdjustment?`<span>Ajuste al separar cuentas <b>${money(summary.setupAdjustment)}</b></span>`:''}<span>Saldo al cierre del mes <b>${money(summary.closing)}</b></span></div><p class="md-help">El saldo inicial no cuenta como ingreso. En el mes de activación, el ajuste concilia el historial anterior con los saldos reales que ingresaste.</p></section>
       <section class="md-panel"><div class="md-heading"><div><h3>Presupuesto por categorías</h3><p class="md-help">${escape(monthLabel(this.month))} · Límites opcionales para gastos variables</p></div><div class="md-actions">${button('budget','＋ Límite mensual')}${button('categories','Categorías')}</div></div>
       <div class="md-budget-navigation"><div class="md-actions"><button type="button" class="secondary md-small" data-money-action="previous-month" aria-label="Mes anterior" ${this.month==='1900-01'?'disabled':''}>←</button><label class="md-month">Mes <input id="md-budget-month" type="month" min="1900-01" max="9999-12" value="${this.month}"></label><button type="button" class="secondary md-small" data-money-action="next-month" aria-label="Mes siguiente" ${this.month==='9999-12'?'disabled':''}>→</button>${button('current-month','Mes actual','','secondary md-small')}</div><label class="md-month">Histórico <select id="md-history-month">${months.map(month=>`<option value="${month}" ${month===this.month?'selected':''}>${escape(monthLabel(month))}</option>`).join('')}</select></label></div>
       <p class="md-history-help">Cada mes tiene sus propios límites. Los presupuestos y gastos anteriores se conservan; selecciona un mes para consultarlos.${Object.keys(limits).length?'':' Este mes todavía no tiene límites definidos.'}</p>
@@ -60,8 +79,8 @@ export class MoneyPage {
         const used=spent[c.id] || 0, limit=limits[c.id] || 0, ratio=limit?used/limit:0;
         return `<article class="md-budget ${ratio>=1?'md-over':ratio>=.8?'md-warning':''}"><div class="md-heading"><b>${escape(c.name)}</b>${button('budget','Editar',c.id,'secondary md-small')}</div><div>${money(used)} <span class="muted">/ ${limit?money(limit):'sin límite'}</span></div>${limit?`<progress value="${Math.min(used,limit)}" max="${limit}" aria-label="Presupuesto de ${escape(c.name)}"></progress><p class="md-budget-status">${ratio>1?'Límite superado por '+money(used-limit):ratio===1?'Límite alcanzado':ratio>=.8?'Cerca del límite · '+Math.round(ratio*100)+'% utilizado':money(limit-used)+' disponibles'}</p>`:'<p class="md-help">Puedes establecer un límite mensual.</p>'}</article>`;
       }).join('') || '<p class="md-empty">No hay gastos variables ni límites en este mes. Usa «＋ Límite mensual» para definir su presupuesto.</p>'}</div></section>
-      <section class="md-panel"><div class="md-heading"><div><h3>Movimientos</h3><p class="md-help">Más recientes primero. Cada saldo incluye el historial anterior completo.</p></div><div class="md-filters"><select id="md-scope" aria-label="Período de movimientos"><option value="month" ${this.scope==='month'?'selected':''}>Mes seleccionado</option><option value="all" ${this.scope==='all'?'selected':''}>Todo el historial</option></select><select id="md-type" aria-label="Tipo de movimiento"><option value="all">Todos los movimientos</option>${Object.entries(types).map(([value,label])=>`<option value="${value}" ${this.type===value?'selected':''}>${label}</option>`).join('')}</select></div></div>
-      <div class="md-table-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Tipo</th><th>Valor</th><th>Saldo</th><th>Acciones</th></tr></thead><tbody>${rows.map(m=>`<tr><td>${dateLabel(m.date)}</td><td class="md-concept">${escape(m.description)}${m.type==='fixed'?`<p class="md-help">Cuota: ${escape(monthLabel(m.period))}${m.estimatedDate?' · Fecha estimada del pago previo':''}</p>`:''}</td><td>${escape(this.categoryLabel(m))}</td><td class="${M.sign(m)>0?'md-positive':'md-negative'}">${types[m.type]}</td><td class="md-amount ${M.sign(m)>0?'md-positive':'md-negative'}">${M.sign(m)>0?'+':'−'}${money(m.amount)}</td><td class="md-amount">${money(m.balance)}</td><td><div class="md-row-actions">${button('edit-movement','Editar',m.id,'secondary md-small')}${button('delete-movement','Eliminar',m.id,'danger md-small')}</div></td></tr>`).join('') || '<tr><td colspan="7" class="md-empty">No hay movimientos en este período.</td></tr>'}</tbody></table></div></section>`;
+       <section class="md-panel"><div class="md-heading"><div><h3>Movimientos</h3><p class="md-help">Más recientes primero. Los movimientos previos a separar las cuentas se conservan sin asignar.</p></div><div class="md-filters"><select id="md-scope" aria-label="Período de movimientos"><option value="month" ${this.scope==='month'?'selected':''}>Mes seleccionado</option><option value="all" ${this.scope==='all'?'selected':''}>Todo el historial</option></select><select id="md-type" aria-label="Tipo de movimiento"><option value="all">Todos los movimientos</option>${Object.entries(types).map(([value,label])=>`<option value="${value}" ${this.type===value?'selected':''}>${label}</option>`).join('')}</select></div></div>
+        <div class="md-table-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Cuenta</th><th>Tipo</th><th>Valor</th><th>Saldo</th><th>Acciones</th></tr></thead><tbody>${rows.map(m=>{const sign=M.sign(m),account=m.type==='transfer'?`${M.accountName(state,m.fromAccountId)} → ${M.accountName(state,m.toAccountId)}`:m.accountId?M.accountName(state,m.accountId):configured?'Historial anterior':'—';return `<tr><td>${dateLabel(m.date)}</td><td class="md-concept">${escape(m.description)}${m.type==='fixed'?`<p class="md-help">Cuota: ${escape(monthLabel(m.period))}${m.estimatedDate?' · Fecha estimada del pago previo':''}</p>`:''}</td><td>${escape(this.categoryLabel(m))}</td><td>${escape(account)}</td><td class="${sign>0?'md-positive':sign<0?'md-negative':''}">${types[m.type]}</td><td class="md-amount ${m.type==='transfer'?'':sign>0?'md-positive':'md-negative'}">${m.type==='transfer'?'↔ ':sign>0?'+':'−'}${money(m.amount)}</td><td class="md-amount">${m.type==='transfer'?'—':money(m.balance)}</td><td><div class="md-row-actions">${m.type==='transfer'?'':button('edit-movement','Editar',m.id,'secondary md-small')}${button('delete-movement','Eliminar',m.id,'danger md-small')}</div></td></tr>`}).join('') || '<tr><td colspan="8" class="md-empty">No hay movimientos en este período.</td></tr>'}</tbody></table></div></section>`;
   }
   dialog(title,content,submit) {$('#money-dialog-title').textContent=title;$('#money-fields').innerHTML=content;$('#money-error').textContent='';this.submit=submit;this.setSaving(false);$('#money-save').hidden=!submit;if(!$('#money-dialog').open)$('#money-dialog').showModal();}
   options(selected,optional=false) {return `${optional?'<option value="">Sin categoría</option>':''}${this.store.state.categories.map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${escape(c.name)}</option>`).join('')}<option value="__new">＋ Agregar categoría…</option>`;}
@@ -88,8 +107,18 @@ export class MoneyPage {
     type=item?.type || type;
     const opening=type==='opening',fixed=type==='fixed';
     const title=item?'Editar movimiento':opening?'Saldo inicial':type==='income'?'Agregar ingreso':'Agregar gasto';
-    const note=opening?'Registra una sola vez el dinero que tenías al empezar. No se contará como ingreso del mes.':type==='variable'?'Este gasto se descontará inmediatamente de tu dinero disponible.':type==='income'?'Este ingreso se sumará al saldo disponible.':'El pago mantiene su cuota mensual. Puedes corregir su descripción, fecha y valor.';
-    this.dialog(title,`<p class="muted">${note}</p>`+field('Descripción / concepto','description','text',item?.description || (opening?'Saldo inicial':''),'required maxlength="160"')+field('Valor (USD)','amount','number',item?item.amount/100:'','required min="0.01" max="1000000000" step="0.01"')+field('Fecha','date','date',item?.date || M.today(),`required min="1900-01-01" max="${M.today()}"`)+(fixed?`<p class="md-help">Cuota: ${escape(monthLabel(item.period))}</p>`:opening?'':this.categoryField(item?.categoryId,type==='income')),data=>store.saveMovement({...data,type,amount:M.cents(data.amount)},item?.id));
+    const legacy=item && !item.accountId && !opening && M.accountsActive(store.state);
+    const note=opening?'Registra una sola vez el dinero que tenías al empezar. No se contará como ingreso del mes.':legacy?'Movimiento anterior al inicio de cuentas. Puedes editarlo; seguirá conservado en el historial sin afectar los saldos actuales.':type==='variable'?'Este gasto se descontará inmediatamente de la cuenta elegida.':type==='income'?'Este ingreso se sumará a la cuenta elegida.':'El pago mantiene su cuota mensual. Puedes corregir su descripción, fecha y valor.';
+    const account=(!opening && M.accountsActive(store.state) && !legacy)?this.accountField(item?.accountId):'';
+    const minDate=M.accountsActive(store.state) && !legacy && !opening?store.state.accountsActivatedAt:'1900-01-01';
+    this.dialog(title,`<p class="muted">${note}</p>`+field('Descripción / concepto','description','text',item?.description || (opening?'Saldo inicial':''),'required maxlength="160"')+field('Valor (USD)','amount','number',item?item.amount/100:'','required min="0.01" max="1000000000" step="0.01" inputmode="decimal"')+field('Fecha','date','date',item?.date || M.today(),`required min="${minDate}" max="${M.today()}"`)+account+(fixed?`<p class="md-help">Cuota: ${escape(monthLabel(item.period))}</p>`:opening?'':this.categoryField(item?.categoryId,type==='income')),data=>store.saveMovement({...data,type,amount:M.cents(data.amount)},item?.id));
+  }
+  transferForm() {
+    const state=this.store.state;
+    if(!M.accountsActive(state)){this.accountsForm();return;}
+    const from=state.lastAccountId || state.accounts[0].id,to=state.accounts.find(account=>account.id!==from)?.id;
+    const options=selected=>state.accounts.map(account=>`<option value="${account.id}" ${account.id===selected?'selected':''}>${escape(account.name)}</option>`).join('');
+    this.dialog('Transferir entre mis cuentas',`<p class="muted">La transferencia mueve saldo, pero no cuenta como ingreso ni como gasto.</p><label class="md-field">Desde<select name="fromAccountId">${options(from)}</select></label><label class="md-field">Hacia<select name="toAccountId">${options(to)}</select></label>${field('Valor (USD)','amount','number','','required min="0.01" max="1000000000" step="0.01" inputmode="decimal"')}${field('Fecha','date','date',M.today(),`required min="${state.accountsActivatedAt}" max="${M.today()}"`)}`,data=>this.store.saveTransfer({...data,amount:M.cents(data.amount)}));
   }
   budgetForm(id) {
     const store=this.store,month=this.month,category=id || store.state.categories[0]?.id;
@@ -112,6 +141,14 @@ export class MoneyPage {
   }
   async action(action,id) {
     if(!this.store?.ready)throw new Error('Espera a que se cargue Mi Dinero.');
+    if(action==='setup-accounts'){this.accountsForm();return;}
+    if(action==='choose-fixed-account'){this.fixedAccountPicker(id,'preference');return;}
+    if(action==='select-fixed-account'){
+      if(!this.fixedAccountExpenseId)throw new Error('Elige primero el gasto mensual.');
+      if(this.fixedAccountMode==='preference')await this.store.setPreferredFixedAccount(this.fixedAccountExpenseId,id);
+      else await this.store.setPaid(this.fixedAccountExpenseId,true,id);
+      $('#money-dialog').close();this.notify(this.fixedAccountMode==='preference'?'Cuenta habitual actualizada.':'Pago registrado y cuenta habitual guardada.');return;
+    }
     if(action==='export-report')this.exportReport();
     if(action==='close-report')$('#money-report-dialog').close();
     if(action==='download-report')this.downloadReport();
@@ -124,11 +161,17 @@ export class MoneyPage {
       const month=action==='current-month'?M.monthKey():`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
       if(M.validMonth(month)){this.month=month;this.render();}
     }
-    if(action==='income')this.movementForm('income');
-    if(action==='expense')this.movementForm('variable');
-    if(action==='opening')this.movementForm('opening',this.store.state.movements.find(m=>m.type==='opening')?.id);
+    if(action==='income')M.accountsActive(this.store.state)?this.movementForm('income'):this.accountsForm();
+    if(action==='expense')M.accountsActive(this.store.state)?this.movementForm('variable'):this.accountsForm();
+    if(action==='transfer')this.transferForm();
+    if(action==='opening' && !M.accountsActive(this.store.state))this.movementForm('opening',this.store.state.movements.find(m=>m.type==='opening')?.id);
     if(action==='edit-movement')this.movementForm(null,id);
-    if(action==='delete-movement' && confirm('¿Eliminar este movimiento? Se recalculará el saldo. Si es un pago mensual, la cuota volverá a estar pendiente si el gasto todavía existe.')){await this.store.deleteMovement(id);this.notify('Movimiento eliminado y saldo recalculado.');}
+    if(action==='delete-movement') {
+      const movement=this.store.state.movements.find(item=>item.id===id);
+      const previous= M.accountsActive(this.store.state) && movement && !movement.accountId && movement.type!=='transfer';
+      const prompt=previous?'¿Quitar este movimiento del historial anterior? Los saldos actuales de las cuentas no cambiarán.':'¿Eliminar este movimiento? Se recalculará el saldo. Si es un pago mensual, la cuota volverá a estar pendiente si el gasto todavía existe.';
+      if(movement && confirm(prompt)){await this.store.deleteMovement(id);this.notify(previous?'Movimiento quitado del historial. Los saldos de tus cuentas no cambiaron.':'Movimiento eliminado y saldo recalculado.');}
+    }
     if(action==='budget')this.budgetForm(id);
     if(action==='categories')this.categories();
     if(action==='new-category' || action==='rename-category') {

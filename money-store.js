@@ -41,6 +41,9 @@ export class MoneyStore {
     return !!M.payment(this.state,item.id,period) || (!this.state.legacy[M.legacyKey(item)] && item.paidMonth===period);
   }
   paidTotal(period) {return this.state.movements.filter(m=>m.type==='fixed' && m.period===period).reduce((sum,m)=>sum+m.amount,0);}
+  async initializeAccounts(balances) {
+    await this.change((tx,state)=>({value:M.initializeAccounts(state,balances)}));
+  }
   async importExistingPayments(items) {
     const candidates=items.filter(item=>M.validMonth(item.paidMonth) && !this.state.legacy[M.legacyKey(item)]);
     if(!candidates.length || !this.active)return;
@@ -51,7 +54,7 @@ export class MoneyStore {
       return {unchanged:!changed};
     });
   }
-  async setPaid(id,paid) {
+  async setPaid(id,paid,accountId) {
     await this.change(async(tx,state)=>{
       const ref=this.subscription(id), snapshot=await tx.get(ref);
       if(!snapshot.exists())throw new Error('El gasto ya no existe.');
@@ -59,14 +62,27 @@ export class MoneyStore {
       M.importLegacyPayment(state,item);
       const period=M.monthKey(), existing=M.payment(state,id,period);
       if(paid) {
-        if(!existing)M.saveMovement(state,{type:'fixed',description:item.name,amount:M.cents(item.price),date:M.today(),period,subscriptionId:id,category:item.category});
+        const selectedAccount=accountId || item.defaultAccountId;
+        M.validateAccount(state,selectedAccount);
+        if(!existing)M.saveMovement(state,{type:'fixed',description:item.name,amount:M.cents(item.price),date:M.today(),period,subscriptionId:id,category:item.category,accountId:selectedAccount});
+        else if(existing.accountId && existing.accountId!==selectedAccount)M.assignFixedPaymentAccount(state,id,selectedAccount,period);
+        state.lastAccountId=selectedAccount;
         state.legacy[`${id}:${period}`]=true;
-        tx.update(ref,{paidMonth:period,paidAt:new Date().toISOString()});
+        tx.update(ref,{paidMonth:period,paidAt:new Date().toISOString(),defaultAccountId:selectedAccount});
       } else {
         if(existing)M.deleteMovement(state,existing.id);
         state.legacy[`${id}:${period}`]=true;
         if(item.paidMonth===period)tx.update(ref,{paidMonth:null,paidAt:null});
       }
+    });
+  }
+  async setPreferredFixedAccount(id,accountId) {
+    await this.change(async(tx,state)=>{
+      M.validateAccount(state,accountId);
+      const ref=this.subscription(id),snapshot=await tx.get(ref);
+      if(!snapshot.exists())throw new Error('El gasto ya no existe.');
+      M.assignFixedPaymentAccount(state,id,accountId,M.monthKey());
+      tx.update(ref,{defaultAccountId:accountId});
     });
   }
   async deleteExpense(id) {
@@ -84,8 +100,11 @@ export class MoneyStore {
       let ref,snapshot;
       if(existing?.type==='fixed'){ref=this.subscription(existing.subscriptionId);snapshot=await tx.get(ref);}
       const result=M.saveMovement(state,data,id);
-      if(ref && snapshot.exists() && snapshot.data().paidMonth===result.period)tx.update(ref,{paidAt:result.date+'T12:00:00.000Z'});
+      if(ref && snapshot.exists() && snapshot.data().paidMonth===result.period)tx.update(ref,{paidAt:result.date+'T12:00:00.000Z',...(result.accountId?{defaultAccountId:result.accountId}:{})});
     });
+  }
+  async saveTransfer(data) {
+    await this.change((tx,state)=>({value:M.saveTransfer(state,data)}));
   }
   async deleteMovement(id) {
     await this.change(async(tx,state)=>{

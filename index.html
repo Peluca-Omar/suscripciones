@@ -306,6 +306,19 @@
         flex: 1;
         padding: 9px;
       }
+      .fixed-account-hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 12px;
+      }
+      .account-link {
+        padding: 0 3px;
+        margin-left: 4px;
+        color: var(--accent);
+        background: transparent;
+        font-size: inherit;
+        font-weight: 750;
+      }
       .icon-btn {
         position: absolute;
         right: 13px;
@@ -765,6 +778,9 @@
               .map((item) => {
                 const paidItem = isPaid(item),
                   due = dueInfo(item),
+                  payment = moneyStore?.state.movements.find(m => m.type === "fixed" && m.subscriptionId === item.id && m.period === monthKey()),
+                  defaultAccount = moneyStore?.state.accounts.find(account => account.id === item.defaultAccountId),
+                  paidAccount = payment?.accountId && moneyStore?.state.accounts.find(account => account.id === payment.accountId),
                   badge = paidItem
                     ? '<span class="badge paid-badge">Pagado</span>'
                     : due.days === 0
@@ -774,7 +790,16 @@
                           due.label +
                           "</span>"
                         : "<span>" + due.label + "</span>";
-                return `<article class="card ${paidItem ? "paid-card" : ""}"><button class="icon-btn" data-action="edit" data-id="${item.id}" title="Editar">...</button><div class="card-head"><div class="icon" style="background:${escapeHtml(item.color || "#8bb8ff")}">${escapeHtml(item.icon || "$")}</div><div><h2>${escapeHtml(item.name)}</h2><div class="category">${escapeHtml(item.category || "Otros")}</div></div></div><div class="price">${money(item.price)} <span class="muted" style="font-size:13px;font-weight:500">/ mes</span></div><div class="meta"><span>Pago: dia ${item.day}</span>${badge}</div><div class="actions"><button data-action="paid" data-id="${item.id}">${paidItem ? "Desmarcar pago" : "Marcar pagado"}</button><button class="secondary" data-action="history" data-id="${item.id}">Historial</button></div></article>`;
+                const accountHint = moneyStore?.state.accountsActivatedAt
+                  ? paidAccount
+                    ? `<div class="fixed-account-hint">Pagado desde ${escapeHtml(paidAccount.name)} <button class="account-link" data-action="account" data-id="${item.id}">Cambiar</button></div>`
+                    : paidItem
+                      ? `<div class="fixed-account-hint">Pago anterior · sin cuenta${defaultAccount ? ` · próximo pago: ${escapeHtml(defaultAccount.name)}` : ''} <button class="account-link" data-action="account" data-id="${item.id}">Cuenta próxima vez</button></div>`
+                      : defaultAccount
+                        ? `<div class="fixed-account-hint">Cuenta habitual: ${escapeHtml(defaultAccount.name)} <button class="account-link" data-action="account" data-id="${item.id}">Cambiar</button></div>`
+                        : '<div class="fixed-account-hint">Elige una cuenta al marcar el pago</div>'
+                  : '';
+                return `<article class="card ${paidItem ? "paid-card" : ""}"><button class="icon-btn" data-action="edit" data-id="${item.id}" title="Editar">...</button><div class="card-head"><div class="icon" style="background:${escapeHtml(item.color || "#8bb8ff")}">${escapeHtml(item.icon || "$")}</div><div><h2>${escapeHtml(item.name)}</h2><div class="category">${escapeHtml(item.category || "Otros")}</div></div></div><div class="price">${money(item.price)} <span class="muted" style="font-size:13px;font-weight:500">/ mes</span></div><div class="meta"><span>Pago: dia ${item.day}</span>${badge}</div>${accountHint}<div class="actions"><button data-action="paid" data-id="${item.id}">${paidItem ? "Desmarcar pago" : "Marcar pagado"}</button><button class="secondary" data-action="history" data-id="${item.id}">Historial</button></div></article>`;
               })
               .join("")
           : '<div class="empty">No hay gastos que coincidan. Agrega el primero para comenzar.</div>';
@@ -890,13 +915,25 @@
           action = button.dataset.action,
           item = items.find((entry) => entry.id === id);
         if (action === "edit") openEditor(item);
+        if (action === "account") {
+          if (!moneyStore?.ready) return alert("Espera a que termine de cargar Mi Dinero.");
+          if (!moneyStore.state.accountsActivatedAt) return moneyPage.action("setup-accounts");
+          moneyPage.fixedAccountPicker(id, "preference");
+        }
         if (action === "paid") {
           if (!moneyStore?.ready) return alert("Espera a que termine de cargar Mi Dinero.");
+          if (!moneyStore.state.accountsActivatedAt) return moneyPage.action("setup-accounts");
           const undo = isPaid(item);
-          if (undo && !confirm("¿Desmarcar este pago? Se eliminará ese movimiento y se devolverá su valor al saldo disponible.")) return;
+          const currentPayment = moneyStore.state.movements.find(m => m.type === "fixed" && m.subscriptionId === id && m.period === monthKey());
+          const undoMessage = currentPayment?.accountId
+            ? "¿Desmarcar este pago? Se eliminará el movimiento y el importe volverá a esa cuenta."
+            : "¿Desmarcar este pago anterior? Se quitará del historial, pero no cambiará los saldos actuales de tus cuentas.";
+          if (undo && !confirm(undoMessage)) return;
+          const defaultAccount = moneyStore.state.accounts.find(account => account.id === item.defaultAccountId);
+          if (!undo && !defaultAccount) return moneyPage.fixedAccountPicker(id, "pay");
           button.disabled = true;
           try {
-            await moneyStore.setPaid(id, !undo);
+            await moneyStore.setPaid(id, !undo, defaultAccount?.id);
             showToast(undo ? "Pago desmarcado. Saldo actualizado." : "Pago registrado y descontado de Mi Dinero.");
           } catch (error) { alert(error.message); }
           finally { button.disabled = false; }

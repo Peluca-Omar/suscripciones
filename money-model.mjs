@@ -15,30 +15,109 @@ export function cents(value) {
   if(!Number.isSafeInteger(amount) || amount>100000000000)throw new Error('El valor es demasiado grande.');
   return amount;
 }
+export const ACCOUNT_DEFINITIONS=[
+  {id:'pichincha',name:'Banco Pichincha'},
+  {id:'bolivariano',name:'Banco Bolivariano'},
+  {id:'jep',name:'Coop. JEP'},
+  {id:'cash',name:'Efectivo'},
+];
+const defaultAccounts=()=>ACCOUNT_DEFINITIONS.map(account=>({...account,openingBalance:0}));
 export function initialState() {
-  return {version:1,revision:0,movements:[],budgets:{},legacy:{},categories:[
+  return {version:2,revision:0,movements:[],budgets:{},legacy:{},accounts:defaultAccounts(),accountsActivatedAt:'',lastAccountId:'',categories:[
     'Comida','Transporte','Entretenimiento','Pareja / Regalos','Compras','Hogar','Salud','Otros','Juegos','Fiestas',
   ].map((name,i)=>({id:`category-${i}`,name}))};
 }
 export function readState(value) {
   if(value===undefined)return initialState();
-  if(value.version!==1 || !Array.isArray(value.movements) || !Array.isArray(value.categories) || !value.budgets || !value.legacy)throw new Error('El formato de los datos de Mi Dinero no es compatible.');
-  return {...structuredClone(value),revision:value.revision || 0};
+  if(!value || ![1,2].includes(value.version) || !Array.isArray(value.movements) || !Array.isArray(value.categories) || !value.budgets || !value.legacy)throw new Error('El formato de los datos de Mi Dinero no es compatible.');
+  const state={...structuredClone(value),version:2,revision:value.revision || 0};
+  if(value.version===1) {
+    // Los movimientos anteriores se conservan exactamente como están. Como no
+    // guardaban cuenta, se tratan como historial previo al inicio de cuentas.
+    state.accounts=defaultAccounts();state.accountsActivatedAt='';state.lastAccountId='';
+    return state;
+  }
+  const savedAccounts=Array.isArray(value.accounts)?value.accounts:[];
+  if(value.accountsActivatedAt && ACCOUNT_DEFINITIONS.some(definition=>!savedAccounts.some(account=>account.id===definition.id)))throw new Error('Faltan datos de una cuenta configurada. No se modificó el historial.');
+  state.accounts=ACCOUNT_DEFINITIONS.map(definition=>{
+    const saved=savedAccounts.find(account=>account.id===definition.id);
+    if(saved && (!Number.isSafeInteger(saved.openingBalance) || saved.openingBalance<0 || saved.openingBalance>100000000000))throw new Error('El saldo inicial de una cuenta no es válido.');
+    return {...definition,openingBalance:saved?.openingBalance || 0};
+  });
+  state.accountsActivatedAt=value.accountsActivatedAt || '';
+  if(state.accountsActivatedAt && !validDate(state.accountsActivatedAt))throw new Error('La fecha de inicio de las cuentas no es válida.');
+  const hasAccountMovements=state.movements.some(m=>m.accountId || m.type==='transfer');
+  if(!state.accountsActivatedAt && (hasAccountMovements || state.accounts.some(account=>account.openingBalance)))throw new Error('El estado de las cuentas está incompleto. No se modificó el historial.');
+  if(state.accountsActivatedAt && !Number.isSafeInteger(accountOpeningTotal(state)))throw new Error('La suma de los saldos iniciales no es válida.');
+  if(state.accountsActivatedAt && state.movements.some(m=>(m.accountId && !state.accounts.some(account=>account.id===m.accountId)) || (m.type==='transfer' && (!state.accounts.some(account=>account.id===m.fromAccountId) || !state.accounts.some(account=>account.id===m.toAccountId)))))throw new Error('Hay movimientos asociados a una cuenta desconocida. No se modificó el historial.');
+  state.lastAccountId=state.accounts.some(account=>account.id===value.lastAccountId)?value.lastAccountId:'';
+  return state;
 }
-export const sign = movement => ['income','opening'].includes(movement.type)?movement.amount:-movement.amount;
-export const balance = state => state.movements.reduce((sum,m)=>sum+sign(m),0);
+export const accountsActive=state=>!!state.accountsActivatedAt;
+export const accountName=(state,id)=>state.accounts.find(account=>account.id===id)?.name || '';
+export const sign = movement => movement.type==='transfer'?0:['income','opening'].includes(movement.type)?movement.amount:-movement.amount;
+export function accountMovementSign(movement,id) {
+  if(movement.type==='transfer')return movement.toAccountId===id?movement.amount:movement.fromAccountId===id?-movement.amount:0;
+  return movement.accountId===id?sign(movement):0;
+}
+export function accountBalance(state,id) {
+  const account=state.accounts.find(entry=>entry.id===id);
+  if(!account)return 0;
+  return account.openingBalance+state.movements.reduce((sum,m)=>sum+accountMovementSign(m,id),0);
+}
+export const accountBalances=state=>state.accounts.map(account=>({...account,balance:accountBalance(state,account.id)}));
+export const accountOpeningTotal=state=>state.accounts.reduce((sum,account)=>sum+account.openingBalance,0);
+export const balance = state => accountsActive(state)?state.accounts.reduce((sum,account)=>sum+accountBalance(state,account.id),0):state.movements.reduce((sum,m)=>sum+sign(m),0);
+export function initializeAccounts(state,balances,date=today()) {
+  if(accountsActive(state))throw new Error('Las cuentas ya están configuradas.');
+  if(!validDate(date) || date>today())throw new Error('La fecha de inicio no es válida.');
+  const values=ACCOUNT_DEFINITIONS.map(account=>{
+    const amount=balances[account.id];
+    if(!Number.isSafeInteger(amount) || amount<0 || amount>100000000000)throw new Error(`Ingresa un saldo válido para ${account.name}.`);
+    return {...account,openingBalance:amount};
+  });
+  const total=values.reduce((sum,account)=>sum+account.openingBalance,0);
+  if(!Number.isSafeInteger(total))throw new Error('La suma de los saldos es demasiado grande.');
+  state.accounts=values;state.accountsActivatedAt=date;state.lastAccountId=values[0].id;
+  return total;
+}
 export function ledger(state) {
-  let total=0;
-  return [...state.movements].sort((a,b)=>a.date.localeCompare(b.date)||a.order-b.order).map(m=>({...m,balance:total+=sign(m)}));
+  let historicalTotal=0,accountTotal=accountOpeningTotal(state);
+  return [...state.movements].sort((a,b)=>a.date.localeCompare(b.date)||a.order-b.order).map(m=>{
+    if(accountsActive(state) && (m.accountId || m.type==='transfer')) {
+      accountTotal+=sign(m);
+      return {...m,balance:accountTotal};
+    }
+    historicalTotal+=sign(m);
+    return {...m,balance:historicalTotal};
+  });
 }
 export function summary(state,month) {
   const result={income:0,fixed:0,variable:0,opening:0,previous:0,closing:0,spent:0,net:0};
-  state.movements.forEach(m=>{
-    const key=m.date.slice(0,7);
-    if(key<month)result.previous+=sign(m);
-    if(key<=month)result.closing+=sign(m);
-    if(key===month && ['income','fixed','variable','opening'].includes(m.type))result[m.type]+=m.amount;
-  });
+  result.setupAdjustment=0;
+  const activationMonth=accountsActive(state)?state.accountsActivatedAt.slice(0,7):'';
+  if(!activationMonth || month<activationMonth) {
+    state.movements.forEach(m=>{
+      const key=m.date.slice(0,7);
+      if(key<month)result.previous+=sign(m);
+      if(key<=month)result.closing+=sign(m);
+      if(key===month && ['income','fixed','variable','opening'].includes(m.type))result[m.type]+=m.amount;
+    });
+  } else if(month===activationMonth) {
+    state.movements.forEach(m=>{
+      const key=m.date.slice(0,7);
+      if(key<month)result.previous+=sign(m);
+      if(key===month && ['income','fixed','variable','opening'].includes(m.type))result[m.type]+=m.amount;
+    });
+    const legacyAtActivation=state.movements.filter(m=>!m.accountId && m.type!=='transfer' && m.date<=state.accountsActivatedAt).reduce((sum,m)=>sum+sign(m),0);
+    result.setupAdjustment=accountOpeningTotal(state)-legacyAtActivation;
+    result.closing=result.previous+result.setupAdjustment+state.movements.filter(m=>m.date.slice(0,7)===month).reduce((sum,m)=>sum+sign(m),0);
+  } else {
+    result.previous=accountOpeningTotal(state)+state.movements.filter(m=>(m.accountId || m.type==='transfer') && m.date.slice(0,7)<month).reduce((sum,m)=>sum+sign(m),0);
+    const current=state.movements.filter(m=>(m.accountId || m.type==='transfer') && m.date.slice(0,7)===month);
+    current.forEach(m=>{if(['income','fixed','variable','opening'].includes(m.type))result[m.type]+=m.amount;});
+    result.closing=result.previous+current.reduce((sum,m)=>sum+sign(m),0);
+  }
   result.spent=result.fixed+result.variable;
   result.net=result.income-result.spent;
   return result;
@@ -58,7 +137,15 @@ export function saveMovement(state,data,id) {
     if(type==='variable' && !data.categoryId)throw new Error('Selecciona una categoría.');
     if(data.categoryId && !state.categories.some(c=>c.id===data.categoryId))throw new Error('La categoría ya no existe.');
   }
+  const selectedAccount=data.accountId || old?.accountId || '';
+  if(state.accountsActivatedAt && ['income','variable','fixed'].includes(type) && !old && !selectedAccount)throw new Error('Selecciona la cuenta de este movimiento.');
+  if(old && !old.accountId && data.accountId && accountsActive(state))throw new Error('Los movimientos anteriores al inicio de cuentas no se pueden asignar sin alterar sus saldos iniciales.');
+  if(selectedAccount) {
+    if(!accountsActive(state) || !state.accounts.some(account=>account.id===selectedAccount))throw new Error('Selecciona una cuenta válida.');
+    if(data.date<state.accountsActivatedAt)throw new Error('La fecha no puede ser anterior al inicio del seguimiento por cuentas.');
+  }
   const record={...old,id:old?.id || crypto.randomUUID(),type,description:data.description.trim(),amount:data.amount,date:data.date,categoryId:data.categoryId || '',order:old?.order || state.movements.reduce((max,m)=>Math.max(max,m.order),0)+1};
+  if(selectedAccount)record.accountId=selectedAccount;
   if(type==='fixed') {
     record.subscriptionId=old?.subscriptionId || data.subscriptionId;
     record.period=old?.period || data.period;
@@ -69,7 +156,29 @@ export function saveMovement(state,data,id) {
   }
   if(old)state.movements[state.movements.indexOf(old)]=record;
   else state.movements.push(record);
+  if(selectedAccount)state.lastAccountId=selectedAccount;
   return record;
+}
+export function saveTransfer(state,data) {
+  if(!accountsActive(state))throw new Error('Configura primero los saldos de tus cuentas.');
+  if(!state.accounts.some(account=>account.id===data.fromAccountId) || !state.accounts.some(account=>account.id===data.toAccountId))throw new Error('Selecciona las cuentas de origen y destino.');
+  if(data.fromAccountId===data.toAccountId)throw new Error('El origen y el destino deben ser cuentas diferentes.');
+  if(!Number.isSafeInteger(data.amount) || data.amount<=0 || data.amount>100000000000)throw new Error('El valor de la transferencia debe ser mayor que cero.');
+  if(!validDate(data.date) || data.date>today() || data.date<state.accountsActivatedAt)throw new Error('La fecha de la transferencia no es válida.');
+  if(data.amount>accountBalance(state,data.fromAccountId))throw new Error('El saldo de la cuenta de origen no alcanza para esta transferencia.');
+  const record={id:crypto.randomUUID(),type:'transfer',description:data.description?.trim() || 'Transferencia entre mis cuentas',amount:data.amount,date:data.date,fromAccountId:data.fromAccountId,toAccountId:data.toAccountId,order:state.movements.reduce((max,m)=>Math.max(max,m.order),0)+1};
+  state.movements.push(record);state.lastAccountId=data.toAccountId;
+  return record;
+}
+export function validateAccount(state,id) {
+  if(!accountsActive(state) || !state.accounts.some(account=>account.id===id))throw new Error('Selecciona una cuenta válida.');
+  return id;
+}
+export function assignFixedPaymentAccount(state,subscriptionId,accountId,period=monthKey()) {
+  validateAccount(state,accountId);
+  const movement=payment(state,subscriptionId,period);
+  if(movement?.accountId)movement.accountId=accountId;
+  state.lastAccountId=accountId;
 }
 // Las versiones anteriores guardaban únicamente el último mes pagado.
 // Se incorpora una sola vez ese pago conocido, sin inventar meses anteriores.
