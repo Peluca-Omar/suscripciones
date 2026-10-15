@@ -64,7 +64,7 @@ export class MoneyPage {
   }
   fixedAccountPicker(id,mode='pay') {
     if(!M.accountsActive(this.store.state)){this.accountsForm();return;}
-    if(!this.store.state.accounts.some(account=>account.id===id))throw new Error('Selecciona una cuenta válida.');
+    if(!id)throw new Error('Selecciona un gasto mensual.');
     this.fixedAccountExpenseId=id;this.fixedAccountMode=mode;
     const item=this.store.state.movements.find(m=>m.type==='fixed' && m.subscriptionId===id && m.period===M.monthKey());
     this.dialog(mode==='pay'?'¿Desde qué cuenta pagaste?':'Cuenta habitual para este gasto',`<p class="muted">${mode==='pay'?'Al elegirla se registra el pago y quedará como cuenta habitual para la próxima vez.':'Se actualizará la cuenta habitual. Si el pago actual ya estaba asociado a una cuenta, también se corregirá.'}</p><div class="md-account-picker">${this.store.state.accounts.map(account=>`<button type="button" class="secondary md-account-option" data-money-action="select-fixed-account" data-id="${account.id}" ${account.needsOpeningBalance?'disabled':''}>${escape(account.name)}${account.needsOpeningBalance?' · falta saldo':item?.accountId===account.id?' · pago actual':''}</button>`).join('')}</div>${this.store.state.accounts.some(account=>account.needsOpeningBalance)?`<p class="md-help">${button('setup-accounts','Completar saldo de cuenta','','secondary md-small')}</p>`:''}`,null);

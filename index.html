@@ -649,7 +649,7 @@
         updateDoc,
       } from "./backend.js";
       import { MoneyStore } from "./money-store.js";
-      import { MoneyPage } from "./mi-dinero.js";
+      import { MoneyPage } from "./mi-dinero.js?v=20261015-pagos";
 
       const firebaseConfig = {
         apiKey: "AIzaSyCjVjn_AUCaihsOC42Qi_hClYzEQuXh4U4",
@@ -929,7 +929,7 @@
             ? "¿Desmarcar este pago? Se eliminará el movimiento y el importe volverá a esa cuenta."
             : "¿Desmarcar este pago anterior? Se quitará del historial, pero no cambiará los saldos actuales de tus cuentas.";
           if (undo && !confirm(undoMessage)) return;
-          const defaultAccount = moneyStore.state.accounts.find(account => account.id === item.defaultAccountId);
+          const defaultAccount = moneyStore.state.accounts.find(account => account.id === item.defaultAccountId && !account.needsOpeningBalance);
           if (!undo && !defaultAccount) return moneyPage.fixedAccountPicker(id, "pay");
           button.disabled = true;
           try {
@@ -1004,7 +1004,7 @@
         catch (error) { alert(`No se pudo guardar el gasto: ${error.message}`); }
         finally { submit.disabled = false; }
       };
-      $("#cards").onclick = handleCard;
+      $("#cards").onclick = (event) => handleCard(event).catch(error => alert(error.message));
       $("#search").oninput = render;
       $("#category-filter").onchange = render;
       $("#status-filter").onchange = render;
