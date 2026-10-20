@@ -448,6 +448,7 @@
       }
     </style>
     <link rel="stylesheet" href="mi-dinero.css" />
+    <link rel="stylesheet" href="mis-deudas.css" />
   </head>
   <body>
     <section id="login" class="login">
@@ -479,6 +480,7 @@
       <nav class="money-nav" aria-label="Secciones">
         <a href="#gastos" id="nav-fixed" aria-current="page">Gastos mensuales</a>
         <a href="#mi-dinero" id="nav-money">Mi Dinero</a>
+        <a href="#mis-deudas" id="nav-debts">Mis deudas</a>
       </nav>
       <p id="local-preview-note" class="money-preview hidden">Prueba local · Datos de ejemplo guardados en este navegador.</p>
       <div id="fixed-page">
@@ -523,6 +525,7 @@
       </div>
       </div>
       <section id="money-page" class="md-page hidden" aria-label="Mi Dinero"></section>
+      <section id="debts-page" class="debt-page hidden" aria-label="Mis deudas"></section>
     </main>
     <dialog id="money-report-dialog" class="md-report-dialog" aria-labelledby="money-report-title">
       <div class="md-report-toolbar">
@@ -650,6 +653,8 @@
       } from "./backend.js";
       import { MoneyStore } from "./money-store.js";
       import { MoneyPage } from "./mi-dinero.js?v=20261015-pagos";
+      import { DebtStore } from "./debt-store.js";
+      import { DebtPage } from "./mis-deudas.js";
 
       const firebaseConfig = {
         apiKey: "AIzaSyCjVjn_AUCaihsOC42Qi_hClYzEQuXh4U4",
@@ -690,17 +695,20 @@
         unsubscribe,
         items = [],
         editingId,
-        moneyStore;
+        moneyStore,
+        debtStore;
       const moneyPage = new MoneyPage($("#money-page"), showToast);
+      const debtPage = new DebtPage($("#debts-page"), showToast);
       function route() {
         const moneyVisible = location.hash === "#mi-dinero";
-        $("#fixed-page").classList.toggle("hidden", moneyVisible);
+        const debtsVisible = location.hash === "#mis-deudas";
+        $("#fixed-page").classList.toggle("hidden", moneyVisible || debtsVisible);
         $("#money-page").classList.toggle("hidden", !moneyVisible);
-        $("#nav-fixed").toggleAttribute("aria-current", !moneyVisible);
-        $("#nav-money").toggleAttribute("aria-current", moneyVisible);
-        if (moneyVisible) $("#nav-money").setAttribute("aria-current", "page");
-        else $("#nav-fixed").setAttribute("aria-current", "page");
+        $("#debts-page").classList.toggle("hidden", !debtsVisible);
+        ["#nav-fixed", "#nav-money", "#nav-debts"].forEach(selector => $(selector).removeAttribute("aria-current"));
+        $(debtsVisible ? "#nav-debts" : moneyVisible ? "#nav-money" : "#nav-fixed").setAttribute("aria-current", "page");
         moneyPage.render();
+        debtPage.render();
       }
       window.addEventListener("hashchange", route);
       if (isLocalPreview) {
@@ -945,14 +953,20 @@
         items = [];
         subscriptions = collection(db, "users", user.uid, "subscriptions");
         moneyStore?.stop();
+        debtStore?.stop();
         const currentStore = new MoneyStore(db, user.uid);
         moneyStore = currentStore;
         moneyPage.setStore(currentStore);
+        const currentDebts = new DebtStore(currentStore);
+        debtStore = currentDebts;
+        debtPage.setStore(currentDebts);
+        currentDebts.start(() => { if (debtStore === currentDebts) debtPage.render(); });
         currentStore.start(() => {
           if (moneyStore !== currentStore) return;
           render();
           moneyPage.render();
-        }, (error) => { if (moneyStore === currentStore) { moneyPage.render(); alert(`No se pudo cargar Mi Dinero: ${error.message}`); } });
+          debtPage.render();
+        }, (error) => { if (moneyStore === currentStore) { moneyPage.render(); debtPage.render(); alert(`No se pudo cargar Mi Dinero: ${error.message}`); } });
         $("#login").classList.add("hidden");
         $("#app").classList.remove("hidden");
         $("#user-name").textContent = user.displayName || "Mi cuenta";
@@ -1032,8 +1046,11 @@
           $("#login").classList.remove("hidden");
           unsubscribe?.();
           moneyStore?.stop();
+          debtStore?.stop();
           moneyStore = null;
+          debtStore = null;
           moneyPage.setStore(null);
+          debtPage.setStore(null);
           document.querySelectorAll(".modal.open").forEach(modal => modal.classList.remove("open"));
           items = [];
         }

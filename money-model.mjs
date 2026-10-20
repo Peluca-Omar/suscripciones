@@ -152,6 +152,7 @@ export const legacyKey = item => `${item.id}:${item.paidMonth}`;
 export function saveMovement(state,data,id) {
   const old=id?state.movements.find(m=>m.id===id):null;
   if(id && !old)throw new Error('El movimiento ya no existe.');
+  if(old?.debtId)throw new Error('Para corregir un pago de deuda, elimínalo y vuelve a registrarlo desde Mis deudas.');
   const type=old?.type || data.type;
   if(!['opening','income','variable','fixed'].includes(type))throw new Error('Tipo de movimiento inválido.');
   if(!data.description?.trim() || data.description.length>160)throw new Error('Escribe una descripción de hasta 160 caracteres.');
