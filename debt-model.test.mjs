@@ -11,6 +11,20 @@ function setup() {
 }
 const payment=(extra={})=>({amount:14052,interest:0,date:'2026-10-20',accountId:'pichincha',period:'2026-11',...extra});
 
+test('editar deuda conserva pagos y cuentas, y recalcula saldo y calendario',()=>{
+  const {money,state}=setup(),debt=state.debts[0];
+  D.registerPayment(money,debt,payment());
+  const before=structuredClone(money);
+  D.editDebt(state,money,debt.id,{balance:120000,installment:20000});
+  assert.deepEqual(money,before);assert.equal(D.remaining(money,debt),120000);
+  assert.equal(D.schedule(money,debt)[0].pending,5948);
+  assert.deepEqual(D.readDebts(state),state);
+  assert.throws(()=>D.editDebt(state,money,debt.id,{balance:1,installment:0}));
+  D.editDebt(state,money,'suegra',{balance:0});
+  assert.equal(D.remaining(money,state.debts[2]),0);
+  assert.deepEqual(D.readDebts(state),state);
+});
+
 test('las cuatro deudas contienen los importes y fechas confirmados, sin tocar Mi Dinero',()=>{
   const money=M.initialState(),before=structuredClone(money),state=D.initialDebts();
   assert.equal(state.debts.reduce((sum,d)=>sum+d.openingAmount,0),478884);

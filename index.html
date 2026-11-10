@@ -562,9 +562,9 @@
             <label for="price">Precio mensual (USD)</label
             ><input
               id="price"
-              type="number"
-              min="0.01"
-              step="0.01"
+              type="text"
+              inputmode="decimal"
+              pattern="[0-9]+([.,][0-9]{1,2})?"
               required
               placeholder="10"
             />
@@ -863,12 +863,16 @@
         event.preventDefault();
         const data = {
           name: $("#name").value.trim(),
-          price: Number($("#price").value),
+          price: Number($("#price").value.replace(",", ".")),
           day: Number($("#day").value),
           category: $("#category").value.trim(),
           icon: $("#icon").value.trim() || "$",
           color: $("#color").value,
         };
+        if (data.price <= 0 || data.price > 1000000000) {
+          showToast("Introduce un precio mayor que cero y de hasta 1.000.000.000 USD.");
+          return;
+        }
         if (editingId) {
           const old = items.find((item) => item.id === editingId);
           await moneyStore.importExistingPayments([old]);

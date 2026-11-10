@@ -70,7 +70,7 @@ test('CSV estable con importes numéricos, negativos, decimales y ceros',()=>{
 
 test('el informe concilia el historial con los saldos ingresados al activar las cuentas',()=>{
   const state=accounts(),legacyBalance=balance(state),total=33333;
-  initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:10000,jep:10000,cash:3333},today());
+  initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:10000,guayaquil:0,jep:10000,cash:3333},today());
   const report=monthlyReport(state,monthKey(),'Cuenta',today());
   assert.equal(report.setupAdjustment,total-legacyBalance);
   assert.equal(report.closing,total);
@@ -85,7 +85,7 @@ test('el informe concilia el historial con los saldos ingresados al activar las 
 
 test('el informe muestra el saldo de una cuenta nueva separado de ingresos y gastos',()=>{
   const state=accounts(),date=today();
-  initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:10000,jep:10000,cash:3333},date);
+  initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:10000,guayaquil:0,jep:10000,cash:3333},date);
   state.accounts.find(account=>account.id==='flexi-ahorro').needsOpeningBalance=true;
   initializeAddedAccounts(state,{'flexi-ahorro':12500},date);
   const report=monthlyReport(state,monthKey(),'Cuenta',date);

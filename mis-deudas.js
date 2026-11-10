@@ -4,7 +4,10 @@ import * as M from './money-model.mjs';
 const escape=value=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=value=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(value/100);
 const dateLabel=value=>new Intl.DateTimeFormat('es',{day:'numeric',month:'short',year:'numeric'}).format(new Date(value+'T12:00:00'));
-const field=(label,name,type,value,extra='')=>`<label class="debt-field">${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
+const field=(label,name,type,value,extra='')=>{
+  if(type==='number' && extra.includes('step="0.01"')){type='text';extra=extra.replace(/\s*(?:min|max|step|inputmode)="[^"]*"/g,'')+' inputmode="decimal"';}
+  return `<label class="debt-field">${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
+};
 const button=(action,label,id='',extra='')=>`<button type="button" class="secondary" data-debt-action="${action}" data-id="${escape(id)}" ${extra}>${label}</button>`;
 
 export class DebtPage {
@@ -51,13 +54,13 @@ export class DebtPage {
   }
   card(debt,account,initialized) {
     const remaining=D.remaining(account,debt),rows=D.schedule(account,debt),next=remaining>0?rows.find(row=>row.pending>0):null;
-    const completed=rows.filter(row=>!row.pending).length,percent=Math.min(100,Math.max(0,D.paidPrincipal(account,debt.id)/debt.openingAmount*100));
+    const completed=rows.filter(row=>!row.pending).length,percent=debt.openingAmount?Math.min(100,Math.max(0,D.paidPrincipal(account,debt.id)/debt.openingAmount*100)):100;
     return `<article class="debt-card"><h3>${escape(debt.name)}</h3><span class="debt-amount">${money(remaining)}</span><span class="debt-help">Saldo pendiente</span><progress max="100" value="${percent}" aria-label="Progreso de pago de ${escape(debt.name)}"></progress>
       <dl><dt>Capital pagado</dt><dd>${money(D.paidPrincipal(account,debt.id))}</dd>
       ${debt.kind==='flexible'?'<dt>Modalidad</dt><dd>Abonos libres</dd><dt>Vencimiento</dt><dd>Sin fecha obligatoria</dd>':`<dt>${debt.kind==='minimum'?'Mínimo actual':'Cuota mensual'}</dt><dd>${money(debt.installment)}</dd>${debt.kind==='installments'?`<dt>Cuotas cubiertas</dt><dd>${completed} de ${debt.count}</dd>`:''}<dt>Primer vencimiento</dt><dd>${dateLabel(debt.firstDue)}</dd><dt>Fecha de pago</dt><dd>${debt.dueDay===31?'Fin de cada mes':`Día ${debt.dueDay}`}</dd>${debt.cutDay?`<dt>Corte</dt><dd>Día ${debt.cutDay}${debt.cutUnconfirmed?' · por confirmar':''}</dd>`:''}`}</dl>
       ${remaining<=0?'<p class="debt-paid">✓ Deuda pagada</p>':next?`<p class="${next.date<M.today()?'debt-late':'debt-help'}">${next.date<M.today()?'Cuota / mínimo pendiente':'Próximo pago'}: ${dateLabel(next.date)} · ${money(Math.min(next.pending,remaining))}</p>`:debt.kind==='flexible'?'<p class="debt-help">Paga el importe que puedas, cuando decidas.</p>':'<p class="debt-help">Calendario cubierto; revisa el saldo restante con la entidad.</p>'}
       ${debt.kind==='minimum'?'<p class="debt-help">El mínimo puede cambiar. Comprueba en tu estado de cuenta cuánto reduce capital y cuánto corresponde a intereses o cargos.</p>':''}
-      <div class="debt-actions">${button('pay','Registrar pago',debt.id,!initialized || remaining<=0?'disabled':'')}</div>
+      <div class="debt-actions">${button('pay','Registrar pago',debt.id,!initialized || remaining<=0?'disabled':'')}${button('edit','Editar deuda',debt.id,!initialized?'disabled':'')}</div>
       ${rows.length?`<details><summary>Ver calendario de ${debt.kind==='minimum'?'mínimos':'cuotas'}</summary><div class="debt-table-wrap"><table><thead><tr><th>N.º</th><th>Vence</th><th>Pagado</th><th>Pendiente</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${row.index}</td><td>${dateLabel(row.date)}</td><td>${money(row.paid)}</td><td class="${!row.pending?'debt-paid':row.date<M.today()?'debt-late':''}">${!row.pending?'✓ Cubierta':money(row.pending)}</td></tr>`).join('')}</tbody></table></div>${debt.kind==='minimum'?'<p class="debt-help">Proyección del mínimo actual, no es un diferido ni una estimación de la fecha de cancelación.</p>':''}</details>`:''}
     </article>`;
   }
@@ -82,6 +85,14 @@ export class DebtPage {
     }
     if(action==='undo') {
       if(confirm('¿Eliminar este pago? El dinero volverá a la cuenta de origen y la deuda volverá a quedar pendiente.'))await store.undo(id);
+    }
+    if(action==='edit') {
+      const debt=store.state.debts.find(d=>d.id===id);
+      if(!debt)throw new Error('La deuda ya no existe.');
+      this.open(`Editar deuda · ${debt.name}`,'<p>Actualiza el saldo pendiente y la cuota actual. No se registra ningún pago ni se cambian tus cuentas o el historial. El calendario completo se recalculará con la nueva cuota.</p>'+
+        field('Saldo pendiente (USD)','balance','number',D.remaining(store.money.state,debt)/100,'required min="0" max="1000000000" step="0.01"')+
+        (debt.kind==='flexible'?'':field(debt.kind==='minimum'?'Mínimo mensual (USD)':'Cuota mensual (USD)','installment','number',debt.installment/100,'required min="0.01" max="1000000000" step="0.01"')),
+        data=>store.edit(id,{balance:M.cents(data.balance),installment:debt.kind==='flexible'?undefined:M.cents(data.installment)}));
     }
     if(action==='pay') {
       const debt=store.state.debts.find(d=>d.id===id),state=store.money.state;

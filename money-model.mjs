@@ -10,8 +10,9 @@ export function validDate(value) {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0,10)===value;
 }
 export function cents(value) {
-  if(!/^\d+(\.\d{1,2})?$/.test(String(value).trim()))throw new Error('Introduce un valor válido con hasta dos decimales.');
-  const amount=Math.round(Number(value)*100);
+  const normalized=String(value).trim().replace(',','.');
+  if(!/^\d+(\.\d{1,2})?$/.test(normalized))throw new Error('Introduce un valor válido con hasta dos decimales.');
+  const amount=Math.round(Number(normalized)*100);
   if(!Number.isSafeInteger(amount) || amount>100000000000)throw new Error('El valor es demasiado grande.');
   return amount;
 }
@@ -19,10 +20,11 @@ export const ACCOUNT_DEFINITIONS=[
   {id:'pichincha',name:'Banco Pichincha'},
   {id:'flexi-ahorro',name:'Flexi Ahorro · Pichincha'},
   {id:'bolivariano',name:'Banco Bolivariano'},
+  {id:'guayaquil',name:'Banco de Guayaquil'},
   {id:'jep',name:'Coop. JEP'},
   {id:'cash',name:'Efectivo'},
 ];
-const ADDITIONAL_ACCOUNT_IDS=new Set(['flexi-ahorro']);
+const ADDITIONAL_ACCOUNT_IDS=new Set(['flexi-ahorro','guayaquil']);
 const defaultAccounts=()=>ACCOUNT_DEFINITIONS.map(account=>({...account,openingBalance:0,needsOpeningBalance:false}));
 export function initialState() {
   return {version:2,revision:0,movements:[],budgets:{},legacy:{},accounts:defaultAccounts(),accountsActivatedAt:'',lastAccountId:'',categories:[

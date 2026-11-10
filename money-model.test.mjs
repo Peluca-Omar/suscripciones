@@ -27,14 +27,14 @@ test('la migración conserva intactos los movimientos existentes y añade las cu
   assert.equal(M.accountsActive(state),false);
   assert.deepEqual(state.movements,movements);
   assert.equal(M.balance(state),legacyBalance);
-  assert.deepEqual(state.accounts.map(account=>account.id),['pichincha','flexi-ahorro','bolivariano','jep','cash']);
+  assert.deepEqual(state.accounts.map(account=>account.id),['pichincha','flexi-ahorro','bolivariano','guayaquil','jep','cash']);
   assert.equal(old.version,1);
 });
 
 test('el saldo inicial por cuenta no vuelve a descontar el historial y los nuevos gastos sí actualizan el saldo',()=>{
   const state=M.readState(previousState()),oldMovements=structuredClone(state.movements),today=M.today(),current=M.monthKey();
   const oldSummary=M.summary(state,monthBefore(`${current}-01`));
-  M.initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:15000,jep:0,cash:10000},today);
+  M.initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:15000,guayaquil:0,jep:0,cash:10000},today);
   assert.deepEqual(state.movements,oldMovements);
   assert.equal(M.balance(state),35000);
   assert.equal(M.summary(state,monthBefore(`${current}-01`)).closing,oldSummary.closing);
@@ -55,7 +55,7 @@ test('el saldo inicial por cuenta no vuelve a descontar el historial y los nuevo
 
 test('Flexi Ahorro se incorpora a cuentas ya activas sin cambiar sus saldos ni sus movimientos',()=>{
   const state=M.readState(previousState()),today=M.today();
-  M.initializeAccounts(state,{pichincha:10000,bolivariano:15000,jep:0,cash:10000,'flexi-ahorro':0},today);
+  M.initializeAccounts(state,{pichincha:10000,bolivariano:15000,guayaquil:0,jep:0,cash:10000,'flexi-ahorro':0},today);
   const stored=structuredClone(state),oldMovements=structuredClone(state.movements),oldTotal=M.balance(state);
   stored.accounts=stored.accounts.filter(account=>account.id!=='flexi-ahorro');
   const migrated=M.readState(stored);
@@ -78,7 +78,7 @@ test('Flexi Ahorro se incorpora a cuentas ya activas sin cambiar sus saldos ni s
 
 test('las transferencias cambian los saldos de origen y destino, no el total ni los gastos',()=>{
   const state=M.initialState(),today=M.today(),month=M.monthKey();
-  M.initializeAccounts(state,{pichincha:5000,'flexi-ahorro':0,bolivariano:1000,jep:0,cash:2000},today);
+  M.initializeAccounts(state,{pichincha:5000,'flexi-ahorro':0,bolivariano:1000,guayaquil:0,jep:0,cash:2000},today);
   const before=M.summary(state,month);
   M.saveTransfer(state,{fromAccountId:'pichincha',toAccountId:'cash',amount:1500,date:today});
   assert.equal(M.accountBalance(state,'pichincha'),3500);
@@ -93,13 +93,28 @@ test('las transferencias cambian los saldos de origen y destino, no el total ni 
 
 test('se rechazan transferencias entre la misma cuenta o por encima del saldo disponible',()=>{
   const state=M.initialState(),today=M.today();
-  M.initializeAccounts(state,{pichincha:1000,'flexi-ahorro':0,bolivariano:0,jep:0,cash:0},today);
+  M.initializeAccounts(state,{pichincha:1000,'flexi-ahorro':0,bolivariano:0,guayaquil:0,jep:0,cash:0},today);
   assert.throws(()=>M.saveTransfer(state,{fromAccountId:'pichincha',toAccountId:'pichincha',amount:100,date:today}),/diferentes/);
   assert.throws(()=>M.saveTransfer(state,{fromAccountId:'pichincha',toAccountId:'cash',amount:1001,date:today}),/no alcanza/);
 });
 
 test('un movimiento anterior no se asigna a una cuenta luego de fijar los saldos actuales',()=>{
   const state=M.readState(previousState()),old=state.movements[0];
-  M.initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:0,jep:0,cash:0},M.today());
+  M.initializeAccounts(state,{pichincha:10000,'flexi-ahorro':0,bolivariano:0,guayaquil:0,jep:0,cash:0},M.today());
   assert.throws(()=>M.saveMovement(state,{...old,accountId:'pichincha'},old.id),/no se pueden asignar/);
+});
+test('importes aceptan coma o punto y rechazan formatos ambiguos',()=>{
+  assert.equal(M.cents('12,50'),1250);assert.equal(M.cents('12.50'),1250);
+  for(const value of ['1,2.3','1,234','-1',''])assert.throws(()=>M.cents(value));
+});
+test('Guayaquil se agrega pendiente sin alterar el historial de cuentas activas',()=>{
+  const state=M.initialState(),date=M.today();
+  M.initializeAccounts(state,Object.fromEntries(state.accounts.map(a=>[a.id,1000])),date);
+  const stored=structuredClone(state);stored.accounts=stored.accounts.filter(a=>a.id!=='guayaquil');
+  const migrated=M.readState(stored),before=M.balance(migrated);
+  assert.equal(migrated.accounts.find(a=>a.id==='guayaquil').needsOpeningBalance,true);
+  assert.throws(()=>M.validateAccount(migrated,'guayaquil'),/saldo inicial/);
+  M.initializeAddedAccounts(migrated,{guayaquil:1250},date);
+  assert.equal(M.accountBalance(migrated,'guayaquil'),1250);
+  assert.equal(M.balance(migrated),before+1250);
 });

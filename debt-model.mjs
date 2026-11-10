@@ -13,7 +13,7 @@ export function readDebts(value) {
   if(!value || value.version!==1 || !Number.isSafeInteger(value.revision) || !Array.isArray(value.debts))throw new Error('El formato de Mis deudas no es compatible. No se modificaron tus datos.');
   const ids=new Set();
   for(const debt of value.debts) {
-    if(!debt.id || ids.has(debt.id) || !debt.name || !Number.isSafeInteger(debt.openingAmount) || debt.openingAmount<=0 || !['installments','minimum','flexible'].includes(debt.kind))throw new Error('Hay una deuda con datos inválidos. No se modificaron tus datos.');
+    if(!debt.id || ids.has(debt.id) || !debt.name || !Number.isSafeInteger(debt.openingAmount) || debt.openingAmount<0 || !['installments','minimum','flexible'].includes(debt.kind))throw new Error('Hay una deuda con datos inválidos. No se modificaron tus datos.');
     ids.add(debt.id);
     if(debt.kind!=='flexible' && (!M.validDate(debt.firstDue) || !Number.isSafeInteger(debt.installment) || debt.installment<=0 || !Number.isInteger(debt.dueDay) || debt.dueDay<1 || debt.dueDay>31))throw new Error('El calendario de una deuda no es válido.');
     if(debt.kind==='installments' && (!Number.isInteger(debt.count) || debt.count<1 || debt.count>600))throw new Error('El número de cuotas no es válido.');
@@ -24,6 +24,15 @@ export const payments=(money,id)=>money.movements.filter(m=>m.debtId===id);
 export const principal=m=>m.amount-(m.debtInterest || 0);
 export const paidPrincipal=(money,id)=>payments(money,id).reduce((sum,m)=>sum+principal(m),0);
 export const remaining=(money,debt)=>debt.openingAmount-paidPrincipal(money,debt.id);
+export function editDebt(state,money,id,data) {
+  const debt=state.debts.find(d=>d.id===id);
+  if(!debt)throw new Error('La deuda ya no existe.');
+  if(!Number.isSafeInteger(data.balance) || data.balance<0 || data.balance>100000000000 || (debt.kind!=='flexible' && (!Number.isSafeInteger(data.installment) || data.installment<=0 || data.installment>100000000000)))throw new Error('Revisa el saldo y la cuota mensual.');
+  const openingAmount=paidPrincipal(money,id)+data.balance;
+  if(!Number.isSafeInteger(openingAmount))throw new Error('El saldo es demasiado grande.');
+  debt.openingAmount=openingAmount;
+  if(debt.kind!=='flexible')debt.installment=data.installment;
+}
 export function dueDate(debt,index) {
   const [year,month]=debt.firstDue.split('-').map(Number),date=new Date(Date.UTC(year,month-1+index,1));
   const y=date.getUTCFullYear(),m=date.getUTCMonth()+1,last=new Date(Date.UTC(y,m,0)).getUTCDate();

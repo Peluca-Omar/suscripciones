@@ -53,4 +53,14 @@ export class DebtStore {
       state.revision++;tx.set(this.ref,state);
     });
   }
+  async edit(id,data) {
+    if(!this.active)throw new Error('Inicia sesión nuevamente.');
+    await runTransaction(this.money.db,async tx=>{
+      const debtSnapshot=await tx.get(this.ref),moneySnapshot=await tx.get(this.money.ref);
+      const state=D.readDebts(debtSnapshot.data());
+      if(!state)throw new Error('Primero registra tus deudas iniciales.');
+      D.editDebt(state,readState(moneySnapshot.data()),id,data);
+      state.revision++;tx.set(this.ref,state);
+    });
+  }
 }
