@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>GASTOS MENSUALES</title>
+    <title>FINANZAS PERSONALES</title>
     <style>
       :root {
         --bg: #0b1020;
@@ -454,11 +454,10 @@
   <body>
     <section id="login" class="login">
       <div class="login-card">
-        <div class="mark">CONTROL PERSONAL</div>
-        <h1>GASTOS<br />MENSUALES</h1>
+        <div class="mark">MI DINERO, MIS METAS</div>
+        <h1>FINANZAS<br />PERSONALES</h1>
         <p class="muted">
-          Organiza lo que pagas, marca cada cobro cuando lo completes y revisa
-          tu avance del mes.
+          Tus cuentas, gastos, deudas e inversiones en un solo lugar.
         </p>
         <button id="sign-in" class="google">Continuar con Google</button>
       </div>
@@ -466,9 +465,9 @@
     <main id="app" class="wrap hidden">
       <header class="top">
         <div>
-          <div class="eyebrow">CONTROL PERSONAL</div>
-          <h1>GASTOS MENSUALES</h1>
-          <p class="muted">Tu progreso de pago, actualizado en tiempo real.</p>
+          <div class="eyebrow">MI DINERO, MIS METAS</div>
+          <h1>FINANZAS PERSONALES</h1>
+          <p class="muted">Tus cuentas, gastos, deudas e inversiones en un solo lugar.</p>
         </div>
         <div class="account">
           <img id="avatar" class="avatar" alt="" />
@@ -845,7 +844,7 @@
           .forEach((item) => {
             const key = `notice-${today}-${item.id}`;
             if (!sessionStorage.getItem(key)) {
-              new Notification(`Gastos mensuales: ${dueInfo(item).label}`, {
+              new Notification(`Finanzas Personales: ${dueInfo(item).label}`, {
                 body: `${item.name}: ${money(item.price)}`,
                 tag: key,
               });
