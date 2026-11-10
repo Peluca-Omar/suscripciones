@@ -449,6 +449,7 @@
     </style>
     <link rel="stylesheet" href="mi-dinero.css" />
     <link rel="stylesheet" href="mis-deudas.css" />
+    <link rel="stylesheet" href="mis-inversiones.css" />
   </head>
   <body>
     <section id="login" class="login">
@@ -481,6 +482,7 @@
         <a href="#gastos" id="nav-fixed" aria-current="page">Gastos mensuales</a>
         <a href="#mi-dinero" id="nav-money">Mi Dinero</a>
         <a href="#mis-deudas" id="nav-debts">Mis deudas</a>
+        <a href="#mis-inversiones" id="nav-investments">Mis inversiones</a>
       </nav>
       <p id="local-preview-note" class="money-preview hidden">Prueba local · Datos de ejemplo guardados en este navegador.</p>
       <div id="fixed-page">
@@ -526,6 +528,7 @@
       </div>
       <section id="money-page" class="md-page hidden" aria-label="Mi Dinero"></section>
       <section id="debts-page" class="debt-page hidden" aria-label="Mis deudas"></section>
+      <section id="investments-page" class="inv-page hidden" aria-label="Mis inversiones"></section>
     </main>
     <dialog id="money-report-dialog" class="md-report-dialog" aria-labelledby="money-report-title">
       <div class="md-report-toolbar">
@@ -655,6 +658,7 @@
       import { MoneyPage } from "./mi-dinero.js?v=20261015-pagos";
       import { DebtStore } from "./debt-store.js";
       import { DebtPage } from "./mis-deudas.js";
+      import { InvestmentPage } from "./mis-inversiones.js";
 
       const firebaseConfig = {
         apiKey: "AIzaSyCjVjn_AUCaihsOC42Qi_hClYzEQuXh4U4",
@@ -699,14 +703,17 @@
         debtStore;
       const moneyPage = new MoneyPage($("#money-page"), showToast);
       const debtPage = new DebtPage($("#debts-page"), showToast);
+      const investmentPage = new InvestmentPage($("#investments-page"), showToast);
       function route() {
         const moneyVisible = location.hash === "#mi-dinero";
         const debtsVisible = location.hash === "#mis-deudas";
-        $("#fixed-page").classList.toggle("hidden", moneyVisible || debtsVisible);
+        const investmentsVisible = location.hash === "#mis-inversiones";
+        $("#fixed-page").classList.toggle("hidden", moneyVisible || debtsVisible || investmentsVisible);
         $("#money-page").classList.toggle("hidden", !moneyVisible);
         $("#debts-page").classList.toggle("hidden", !debtsVisible);
-        ["#nav-fixed", "#nav-money", "#nav-debts"].forEach(selector => $(selector).removeAttribute("aria-current"));
-        $(debtsVisible ? "#nav-debts" : moneyVisible ? "#nav-money" : "#nav-fixed").setAttribute("aria-current", "page");
+        $("#investments-page").classList.toggle("hidden", !investmentsVisible);
+        ["#nav-fixed", "#nav-money", "#nav-debts", "#nav-investments"].forEach(selector => $(selector).removeAttribute("aria-current"));
+        $(investmentsVisible ? "#nav-investments" : debtsVisible ? "#nav-debts" : moneyVisible ? "#nav-money" : "#nav-fixed").setAttribute("aria-current", "page");
         moneyPage.render();
         debtPage.render();
       }
@@ -954,6 +961,7 @@
       }
       function startUser(currentUser) {
         user = currentUser;
+        investmentPage.setUser(user.uid);
         items = [];
         subscriptions = collection(db, "users", user.uid, "subscriptions");
         moneyStore?.stop();
@@ -1055,6 +1063,7 @@
           debtStore = null;
           moneyPage.setStore(null);
           debtPage.setStore(null);
+          investmentPage.setUser(null);
           document.querySelectorAll(".modal.open").forEach(modal => modal.classList.remove("open"));
           items = [];
         }
